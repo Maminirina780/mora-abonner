@@ -1,45 +1,38 @@
 # Mora Abonner — Site vitrine
 
-Site de présentation du catalogue de formations **Mora Abonner**.
+Site multi-pages de présentation du catalogue de formations **Mora Abonner**.
 
-> 💻 Fampiofanana Informatika 100% an-tserasera
-> 🚀🌱 Ho an'ny vao manomboka · 🎥 Lesona tsotra sy mora arahina
-> 🤝 Fanohanana mandritra ny fianarana · 💰 Vidiny mirary · 🎁 Bonus manokana
+> 💻 Fampiofanana Informatika 100% an-tserasera · 🚀🌱 Ho an'ny vao manomboka
+> 🎥 Lesona tsotra sy mora arahina · 🤝 Fanohanana · 💰 Vidiny mirary · 🎁 Bonus
 
-## Catalogue
+## Pages
 
-| Formation | Durée | Taille | Vidéos | Prix |
-|---|---|---|---|---|
-| Hacking Éthique & Cybersécurité | 31h07 | 4,71 Go | 435 | 100 000 Ar |
-| Développement Web Full-Stack | 23h13 | 7,45 Go | 99 | 200 000 Ar |
-| Pack Bonus — Web & Sécurité | 16h09 | 6,89 Go | 67 | sur demande |
-| Kali Linux & Pentest | 9h53 | 7,83 Go | 16 | 100 000 Ar |
-| Maintenance PC & Réseaux | 9h46 | 9,61 Go | 35 | 100 000 Ar |
-| Trading — Smart Money Concepts | 6h16 | 2,53 Go | 36 | 100 000 Ar |
-| JavaScript de A à Z | 5h46 | 836 Mo | 29 | 50 000 Ar |
-| Boost Page & Facebook Ads | 2h47 | 314 Mo | 15 | 20 000 Ar |
-| **TOTAL** | **105h02** | **40,16 Go** | **732** | |
-
-Toutes les durées sont **mesurées** dans les métadonnées des fichiers vidéo, pas estimées.
+- **index.html** — accueil : présentation Mora Abonner, catalogue filtrable, calculateur d'espace, livraison, FAQ
+- **formation.html?f=ID** — page détail par formation : résumé, langue, ce qu'on apprend, pour qui, prérequis, arborescence complète fichier par fichier
 
 ## Fonctionnalités
 
-- **Explorateur d'arborescence** — chaque dossier et chaque fichier du disque, avec durée et taille, filtrable par recherche
-- **Calculateur d'espace** — le client sélectionne ses formations et sait immédiatement si sa clé 8/16/32/64/128 Go suffit
-- **Filtres par thème**, cartes formation détaillées, FAQ, liens WhatsApp pré-remplis
-- Responsive de 360 px à 1500 px+, thème sombre, `prefers-reduced-motion` respecté
+- **Navbar** avec menu responsive (burger) et **recherche globale** (touche `/` ou `Ctrl/Cmd+K`) sur formations, dossiers et fichiers
+- **Langue précisée** pour chaque formation (malgache / français) avec note explicative
+- **Boutons de contact uniquement** — le numéro n'est jamais affiché en clair, mais le clic redirige (appel / WhatsApp) normalement
+- **Logiciels masqués** — les fichiers .zip/.rar/.7z/.exe/.iso/.apk n'affichent que leur 1re lettre + 🔒 ; leur vrai nom est absent du code et non indexé (introuvable sans achat)
+- **Calculateur d'espace** — le client sait si sa clé 8/16/32/64/128 Go suffit
+- Responsive 360 px → 1500 px+, thème sombre, animations respectant `prefers-reduced-motion`
 
-## Contact
+## Contact (via boutons)
 
-📞 038 15 037 34 · 💬 WhatsApp 033 72 479 42
+Appel : 038 15 037 34 · WhatsApp : 033 72 479 42
 
 ## Stack
 
-HTML / CSS / JavaScript purs, aucune dépendance, aucun build.
+HTML / CSS / JavaScript purs, aucune dépendance.
 
 ```
-index.html   structure
-style.css    design + responsive
-data.js      catalogue extrait du disque (839 fichiers)
-app.js       rendu dynamique, explorateur, calculateur
+index.html      accueil
+formation.html  gabarit page détail
+style.css       design + responsive
+data.js         catalogue extrait du disque (noms de logiciels retirés)
+shared.js       navbar, recherche globale, contact, formatage
+app.js          logique de l'accueil
+formation.js    logique de la page détail
 ```
