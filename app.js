@@ -137,7 +137,7 @@ const FAQ=[
   ["Ahoana no ahazoako ny formation ?",
    "Tsindrio ny bokotra <b>Antso mivantana</b> na <b>WhatsApp</b>. Lazao ny formation tianao, dia omenay ny fomba fandoavana. Rehefa vita ny fandoavana dia alefa aminao ny rakitra amin'ny clé USB, disque na transfert."],
   ["Amin'ny teny inona ny lesona ?",
-   "Formation 6 amin'ny 8 dia <b>amin'ny teny malagasy</b> (fanazavana). Roa no amin'ny teny frantsay: Hacking Éthique sy ny ampahany amin'ny Pack Bonus. Voamarika mazava eo amin'ny karatra sy ny pejy tsirairay ny teny ampiasaina."],
+   "Formation 6 amin'ny 7 dia <b>amin'ny teny malagasy</b> (fanazavana). Iray no amin'ny teny frantsay: Hacking Éthique. Voamarika mazava eo amin'ny karatra sy ny pejy tsirairay ny teny ampiasaina."],
   ["Mila internet ve rehefa mianatra ?",
    "Tsia. Rakitra video (.mp4) sy PDF izy — mianatra hors-ligne tanteraka. Tsy misy compte, tsy misy abonnement. Anao mandrakizay."],
   ["Marina ve ny ora aseho eto ?",
