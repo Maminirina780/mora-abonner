@@ -38,7 +38,9 @@ body{font-family:var(--sans);background:var(--bg);color:var(--txt);line-height:1
 .nav{position:sticky;top:0;z-index:60;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);background:rgba(7,11,18,.82);border-bottom:1px solid var(--line-soft)}
 .nav-in{display:flex;align-items:center;gap:16px;height:66px}
 .brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--txt);font-weight:800;font-size:16px;letter-spacing:-.3px;flex-shrink:0}
-.brand-logo{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--acc),var(--acc-2));color:#04121a;font-family:var(--mono);font-size:13px;font-weight:800;flex-shrink:0}
+.brand-logo{display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:var(--bg-2);border:1px solid var(--line);flex-shrink:0;transition:border-color .2s,transform .2s}
+.brand:hover .brand-logo{border-color:var(--acc);transform:translateY(-1px)}
+.logo-svg{width:26px;height:23px;display:block;filter:drop-shadow(0 1px 4px rgba(34,211,238,.35))}
 .nav-links{display:flex;gap:6px;margin-left:12px}
 .nav-links a{color:var(--txt-dim);text-decoration:none;font-size:14px;padding:8px 12px;border-radius:9px;transition:.2s;white-space:nowrap}
 .nav-links a:hover{color:var(--txt);background:var(--panel-2)}

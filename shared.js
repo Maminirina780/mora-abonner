@@ -22,6 +22,18 @@ const el = (t,c,h) => { const e=document.createElement(t); if(c)e.className=c; i
 
 const TOT = DATA.reduce((a,f)=>({s:a.s+f.size,d:a.d+f.dur,v:a.v+f.nv,n:a.n+f.nf}),{s:0,d:0,v:0,n:0});
 
+/* Logo monogramme "MA" (cyan + lime), reprend le logo de l'entreprise. */
+const LOGO_SVG = `<svg class="logo-svg" viewBox="0 0 128 112" aria-hidden="true">
+  <defs>
+    <linearGradient id="maC" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#38bdf8"/></linearGradient>
+    <linearGradient id="maL" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#4ade80"/><stop offset="1" stop-color="#22d3ee"/></linearGradient>
+  </defs>
+  <g fill="none" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <path stroke="url(#maL)" d="M82 30 L110 92 M60 63 L97 63"/>
+    <path stroke="url(#maC)" d="M22 92 L22 30 L52 74 L82 30"/>
+  </g>
+</svg>`;
+
 const ICO = { mp4:"🎬",avi:"🎬",mkv:"🎬",mov:"🎬",webm:"🎬",pdf:"📕",txt:"📄",
               docx:"📘",pptx:"📙",html:"🌐",js:"📜",py:"🐍",sh:"⚙️",
               zip:"🗜️",rar:"🗜️",jpg:"🖼️",ico:"🖼️",pkt:"🔗",md5:"🔑",h:"📜",cpp:"📜" };
@@ -48,7 +60,7 @@ function buildNav(active){
   host.innerHTML = `
     <div class="wrap nav-in">
       <a href="index.html" class="brand">
-        <span class="brand-logo">MA</span>
+        <span class="brand-logo">${LOGO_SVG}</span>
         <span class="brand-txt">Mora <span class="accent">Abonner</span></span>
       </a>
 
@@ -207,7 +219,7 @@ function buildFoot(){
   f.innerHTML = `
     <div class="wrap foot-in">
       <div class="foot-brand">
-        <span class="brand-logo">MA</span>
+        <span class="brand-logo">${LOGO_SVG}</span>
         <div><b>Mora Abonner</b><span>Fampiofanana Informatika 100% an-tserasera</span></div>
       </div>
       <div class="foot-links">
