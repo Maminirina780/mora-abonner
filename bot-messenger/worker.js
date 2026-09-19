@@ -9707,7 +9707,7 @@ function dessF(){
       "<input type='file' id='ph"+i+"' accept='image/jpeg,image/png' style='display:none'>"+
       "<button type='button' class='btn btn-g btn-w' data-photo='"+i+"'>Choisir une photo</button>"+
       (f.image?"<img src='"+esc(f.image)+"' alt='' style='margin-top:10px;width:100%;max-width:320px;"+
-        "border-radius:12px;border:1px solid var(--ln)' onerror=\"this.style.display='none'\">":"")+
+        "border-radius:12px;border:1px solid var(--ln)' onerror='this.remove()'>":"")+
       "<p class='hint'>La photo est reduite a 1200 px et envoyee sur votre bot. "+
       "Rien a heberger ailleurs : l adresse se remplit toute seule.</p></div>"+
       fld("F",i,"lien","Lien vers la fiche du site (facultatif)","Adresse https complète, par exemple https://moraformation.pages.dev/formation.html?f=kali — elle est ajoutée à la fin du message. Laissez vide pour n'afficher aucun lien.")+
