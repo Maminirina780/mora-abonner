@@ -1474,6 +1474,53 @@ export default {
       return json({ psid: psid || null });
     }
 
+    /* --- Lire le catalogue du site -----------------------------------
+       Le site et le bot tenaient deux listes separees, et elles ont
+       diverge : un client a demande le Trading, present sur le site,
+       absent du bot. Le bot a bien repondu qu'il ne l'avait pas — mais
+       la vente etait perdue pour une raison purement administrative.
+
+       Le bot va donc lire le site lui-meme. La lecture se fait ICI et
+       pas dans le navigateur : la page du site n'autorise pas les
+       requetes venant d'une autre origine, et il n'y a aucune raison
+       de lui demander de le faire.
+
+       On ne fait que LIRE et proposer. Rien n'est enregistre : la
+       console montre ce qui manque, et le proprietaire decide. */
+    if (chemin === "/admin/site" && request.method === "GET") {
+      if (!bonMotDePasse(request, env)) return json({ erreur: "Mot de passe incorrect" }, 401);
+
+      const site = String(url.searchParams.get("url") || "").trim();
+      if (!/^https:\/\/[a-z0-9.-]+(\/[^\s]*)?$/i.test(site)) {
+        return json({ erreur: "Adresse de site invalide. Attendu : https://exemple.pages.dev" }, 400);
+      }
+
+      const base = site.replace(/\/+$/, "");
+      let texte;
+      try {
+        const r = await fetch(base + "/data.js", { cf: { cacheTtl: 60 } });
+        if (!r.ok) return json({ erreur: "Le site a repondu " + r.status + " pour /data.js" }, 400);
+        texte = await r.text();
+      } catch (e) {
+        return json({ erreur: "Site injoignable : " + (e && e.message ? e.message : "erreur reseau") }, 400);
+      }
+
+      // On lit le tableau JSON, on n'execute JAMAIS le fichier. Un site
+      // pirate — ou compromis — ne doit pas pouvoir faire tourner son
+      // code dans le Worker.
+      let liste;
+      try {
+        const a = texte.indexOf("["), b = texte.lastIndexOf("]");
+        if (a === -1 || b <= a) throw new Error("tableau introuvable");
+        liste = JSON.parse(texte.slice(a, b + 1));
+      } catch (e) {
+        return json({ erreur: "data.js illisible : " + (e && e.message ? e.message : "format inattendu") }, 400);
+      }
+      if (!Array.isArray(liste) || !liste.length) return json({ erreur: "Aucune formation trouvee sur le site." }, 400);
+
+      return json({ ok: true, site: base, formations: liste.slice(0, 60).map(f => fichesSite(f, base)) });
+    }
+
     // --- L'API de la page d'administration ---
     if (chemin === "/admin/api") {
       if (!bonMotDePasse(request, env)) return json({ erreur: "Mot de passe incorrect" }, 401);
@@ -1908,6 +1955,68 @@ function fusionner(d) {
     detail: f.detail || ""
   }));
   return r;
+}
+
+/**
+ * Une fiche du site, traduite en formation pour le bot.
+ *
+ * Le site decrit un produit pour etre LU sur une page : titre, resume,
+ * ce qu'on apprend, prerequis. Le bot, lui, envoie un message dans
+ * Messenger. On reprend donc ce qui sert a vendre, et on laisse le
+ * reste.
+ *
+ * Le prix est recopie tel quel depuis le site, jamais recalcule : deux
+ * prix differents pour la meme formation, c'est la confiance du client
+ * qui part.
+ */
+function boutonCourt(icone, titre) {
+  const court = String(titre || "").split(/\s*[—–\-:(&]\s*/)[0].trim() || String(titre || "").trim();
+  const ico = typeof icone === "string" && icone.trim() ? icone.trim() + " " : "";
+  // Trop long : on retire des MOTS, pas des lettres. « JavaScript de
+  // A à » laisse le client devant une phrase inachevee ; « JavaScript »
+  // se comprend. On ne coupe une lettre qu'en dernier recours, quand un
+  // seul mot depasse deja a lui seul.
+  const mots = court.split(/\s+/).filter(Boolean);
+  while (mots.length > 1 && long(ico + mots.join(" ")) > MAX_LG_BOUTON) mots.pop();
+  // « JavaScript de A à » tient dans la limite mais reste en suspens.
+  // On retire les petits mots restes en bout de phrase.
+  const LIANTS = ["de", "du", "des", "le", "la", "les", "a", "à", "et", "ny", "sy", "amin"];
+  while (mots.length > 1 && LIANTS.indexOf(mots[mots.length - 1].toLowerCase()) !== -1) mots.pop();
+  const tout = (ico + mots.join(" ")).trim();
+  return long(tout) <= MAX_LG_BOUTON ? tout
+       : Array.from(tout).slice(0, MAX_LG_BOUTON).join("").trim();
+}
+
+function fichesSite(f, base) {
+  const nombre = (v) => (typeof v === "number" && isFinite(v) ? v : null);
+  const prix = nombre(f.prix);
+  const heures = nombre(f.dur) ? Math.round((f.dur / 3600) * 10) / 10 : null;
+
+  const lignes = [];
+  if (f.sous) lignes.push("🎯 " + String(f.sous).trim());
+  if (f.langue) lignes.push("🗣️ " + String(f.langue).trim());
+  if (f.niv) lignes.push("📊 " + String(f.niv).trim());
+  if (heures) lignes.push("⏱️ " + heures + " ora" + (nombre(f.nv) ? " • " + f.nv + " video" : ""));
+
+  const quoi = Array.isArray(f.apprendre) ? f.apprendre.filter(x => typeof x === "string").slice(0, 6) : [];
+  if (quoi.length) lignes.push("", "📚 Ianao hianatra :", ...quoi.map(x => "• " + x.trim()));
+
+  if (typeof f.prerequis === "string" && f.prerequis.trim()) lignes.push("", "💡 " + f.prerequis.trim());
+
+  const id = String(f.id || "").trim();
+  return {
+    slug: id,
+    // Facebook coupe a 20 caracteres. Tronquer betement donnait
+    // « 📈 Trading — Smart M ». On garde donc ce qui precede le premier
+    // separateur — « Trading », « Kali Linux » — qui est justement le
+    // nom sous lequel le client connait la formation.
+    bouton: boutonCourt(f.ico, f.titre || id),
+    titre: String(f.titre || id).trim(),
+    prix: prix == null ? "" : prix.toLocaleString("fr-FR").replace(/\u202f|\u00a0/g, ".") + " Ar",
+    motscles: id,
+    lien: id ? base + "/formation.html?f=" + encodeURIComponent(id) : "",
+    detail: lignes.join("\n").trim()
+  };
 }
 
 // L'adresse d'un fichier a telecharger. On n'accepte QUE du https complet.
@@ -6249,6 +6358,7 @@ body.menu-open{overflow:hidden; overscroll-behavior:none}
           <button class="clr" id="qFc" aria-label="Effacer la recherche"></button>
         </div>
         <div id="fList"></div>
+        <button class="btn btn-g btn-w" id="syncF">Synchroniser avec le site</button>
         <button class="btn btn-g btn-w" id="lienF">Remplir les liens du site</button>
         <button class="btn btn-g btn-w" id="addF">Ajouter une formation</button>
       </section>
@@ -9519,6 +9629,64 @@ E("lienF").addEventListener("click",function(){
         (sans.length?" — sans fiche sur le site : "+sans.join(", ")+
          ". Laissez ces champs vides plutot qu'un lien au hasard.":"")+
         " Verifiez, puis Enregistrer.", true);
+});
+
+/* Synchroniser avec le site.
+   ---------------------------------------------------------------
+   Le site et le bot tenaient deux listes separees, et elles ont
+   diverge : un client a demande le Trading, present sur le site,
+   absent du bot. Le bot a bien repondu qu'il ne l'avait pas — mais
+   la vente etait perdue pour une raison purement administrative.
+
+   Le bot lit donc le catalogue du site et propose ce qui manque. Il
+   n'AJOUTE que ce qui manque : une formation deja presente n'est
+   jamais ecrasee, car son texte a pu etre retravaille pour
+   Messenger, et Messenger n'est pas une page web.
+
+   Rien n'est enregistre ici. */
+E("syncF").innerHTML=S("dl",18)+"<span>Synchroniser avec le site</span>";
+E("syncF").addEventListener("click",function(){
+  var site=prompt("Adresse de votre site :","https://moraformation.pages.dev");
+  if(!site) return;
+  var b=E("syncF"); b.disabled=true;
+  fetch("/admin/site?url="+encodeURIComponent(site.trim()),{headers:{"x-mot-de-passe":mdp}})
+    .then(function(r){return r.json()})
+    .then(function(j){
+      b.disabled=false;
+      if(j.erreur){ toast(j.erreur,false); return }
+
+      // Une fiche est deja la si son lien ou ses mots-cles portent le
+      // meme identifiant, ou si le titre est identique.
+      var deja=function(sl,ti){
+        return D.formations.some(function(f){
+          return (String(f.lien||"").indexOf("?f="+sl)!==-1)
+              || (String(f.motscles||"").toLowerCase().split(/\s*,\s*/).indexOf(sl)!==-1)
+              || (String(f.titre||"").trim().toLowerCase()===String(ti||"").trim().toLowerCase());
+        });
+      };
+
+      var mx=maxF(), ajoutes=[], refuses=[];
+      (j.formations||[]).forEach(function(f){
+        if(!f.slug || deja(f.slug,f.titre)) return;
+        if(D.formations.length>=mx){ refuses.push(f.titre); return }
+        var n=1; while(D.formations.some(function(x){return String(x.id)===String(n)}))n++;
+        D.formations.push({id:String(n),bouton:f.bouton,titre:f.titre,prix:f.prix,
+          image:"",motscles:f.motscles,lien:f.lien,driveId:"",
+          surMesure:!f.prix,avecNote:true,detail:f.detail});
+        ajoutes.push(f.titre);
+      });
+
+      if(!ajoutes.length && !refuses.length){ toast("Le bot a deja tout ce que le site propose.",true); return }
+      filtre=""; E("qF").value=""; E("qFc").className="clr";
+      if(ajoutes.length) marque();
+      dessF(); stats(); apercu("accueil");
+      toast((ajoutes.length? ajoutes.length+" formation"+(ajoutes.length>1?"s":"")+
+             " ajoutee"+(ajoutes.length>1?"s":"")+" : "+ajoutes.join(", ")+". Relisez, puis Enregistrer." : "")+
+            (refuses.length? " Pas de place pour : "+refuses.join(", ")+
+             ". Facebook n'autorise que "+LIM.btn+" boutons et "+nFix()+" sont pris par les boutons fixes." : ""),
+            ajoutes.length>0);
+    })
+    .catch(function(e){ b.disabled=false; toast("Lecture du site impossible : "+e.message,false) });
 });
 
 E("addF").innerHTML=S("plus",18)+"<span>Ajouter une formation</span>";
