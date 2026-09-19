@@ -1,0 +1,125 @@
+# =====================================================================
+#  Créer l'index Vectorize — depuis un téléphone, sans terminal
+# =====================================================================
+#  Sur mobile il n'y a pas de ligne de commande, donc pas de wrangler.
+#  Ce workflow fait les deux gestes à votre place :
+#
+#    1. il demande au modèle la taille de ses vecteurs — on ne la devine
+#       pas : un index créé sur une mauvaise dimension n'échoue pas à la
+#       création, il échoue à la première recherche, des semaines plus
+#       tard, sur un symptôme qui ne dit pas sa cause ;
+#    2. il crée l'index avec ce chiffre.
+#
+#  Il vit dans CE dépôt parce que c'est ici que sont les secrets
+#  Cloudflare. Il est volontairement AUTONOME — tout le code qu'il
+#  exécute est écrit ci-dessous — pour ne dépendre d'aucun dossier : un
+#  workflow qui a besoin du reste du dépôt échoue dès qu'on le déplace.
+name: Créer l'index Vectorize
+
+on:
+  workflow_dispatch:
+    inputs:
+      index_name:
+        description: "Nom de l'index"
+        default: "mora-chatbot-saas-index"
+        required: true
+      model:
+        description: "Modèle d'embedding"
+        default: "@cf/baai/bge-m3"
+        required: true
+
+jobs:
+  creer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérifier que les secrets Cloudflare sont posés
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          COMPTE: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          manque=0
+          [ -n "$TOKEN" ]  || { echo "::error::CLOUDFLARE_API_TOKEN absent de CE dépôt."; manque=1; }
+          [ -n "$COMPTE" ] || { echo "::error::CLOUDFLARE_ACCOUNT_ID absent de CE dépôt."; manque=1; }
+          [ "$manque" -eq 0 ] || exit 1
+          echo "Secrets présents."
+
+      - name: Demander sa taille de vecteur au modèle
+        id: dim
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          MODELE: ${{ inputs.model }}
+        run: |
+          cat > /tmp/dimensions.mjs <<'JS'
+          const compte = process.env.CLOUDFLARE_ACCOUNT_ID;
+          const jeton = process.env.CLOUDFLARE_API_TOKEN;
+          const modele = process.env.MODELE || "@cf/baai/bge-m3";
+
+          const url = `https://api.cloudflare.com/client/v4/accounts/${compte}/ai/run/${modele}`;
+          const r = await fetch(url, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${jeton}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ text: ["Mianatra Kali Linux ianao."] }),
+          });
+
+          const j = await r.json().catch(() => null);
+          if (!r.ok || !j?.success) {
+            console.error(`HTTP ${r.status}`);
+            console.error(JSON.stringify(j?.errors ?? j, null, 2));
+            process.exit(2);
+          }
+
+          const data = j.result?.data ?? j.result?.embeddings ?? j.result;
+          const vecteur = Array.isArray(data?.[0]) ? data[0] : null;
+          if (!vecteur) {
+            console.error("Réponse inattendue — champs reçus :", Object.keys(j.result ?? {}));
+            process.exit(3);
+          }
+          console.log(`Modele: ${modele}`);
+          console.log(`Dimensions: ${vecteur.length}`);
+          JS
+
+          set -o pipefail
+          if ! sortie=$(node /tmp/dimensions.mjs 2>&1); then
+            echo "$sortie"
+            echo "::error::Le modèle n'a pas répondu. Si le message parle d'autorisation : le jeton n'a pas la permission « Workers AI ». dash.cloudflare.com/profile/api-tokens → le jeton → Edit → Add more → Account · Workers AI · Read."
+            exit 1
+          fi
+          echo "$sortie"
+          n=$(echo "$sortie" | sed -n 's/^Dimensions: *//p')
+          [ -n "$n" ] || { echo "::error::Taille de vecteur illisible."; exit 1; }
+          echo "dimensions=$n" >> "$GITHUB_OUTPUT"
+
+      - name: Créer l'index
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -o pipefail
+          n="${{ steps.dim.outputs.dimensions }}"
+          echo "Création de « ${{ inputs.index_name }} » en $n dimensions, métrique cosine."
+
+          if sortie=$(npx --yes wrangler@4.135.0 vectorize create "${{ inputs.index_name }}" \
+                        --dimensions="$n" --metric=cosine 2>&1); then
+            echo "$sortie"
+            echo "::notice::Index créé en $n dimensions."
+            exit 0
+          fi
+
+          echo "$sortie"
+          # Un index déjà là n'est pas une panne : le workflow se relance
+          # sans conséquence.
+          if echo "$sortie" | grep -qi "already exists"; then
+            echo "::notice::L'index existait déjà. Rien à faire."
+            exit 0
+          fi
+          if echo "$sortie" | grep -qiE "authentication|authorization|permission|10000"; then
+            echo "::error::Le jeton n'a pas la permission « Vectorize ». dash.cloudflare.com/profile/api-tokens → le jeton → Edit → Add more → Account · Vectorize · Edit."
+            exit 1
+          fi
+          if echo "$sortie" | grep -qiE "subscription|billing|plan|not entitled|upgrade"; then
+            echo "::error::Vectorize n'est pas inclus dans le forfait. La plateforme fonctionne sans lui : seule la recherche par le sens manque."
+            exit 1
+          fi
+          echo "::error::Échec de la création — voir le message ci-dessus."
+          exit 1
