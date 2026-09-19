@@ -6248,6 +6248,7 @@ body.menu-open{overflow:hidden; overscroll-behavior:none}
           <button class="clr" id="qFc" aria-label="Effacer la recherche"></button>
         </div>
         <div id="fList"></div>
+        <button class="btn btn-g btn-w" id="lienF">Remplir les liens du site</button>
         <button class="btn btn-g btn-w" id="addF">Ajouter une formation</button>
       </section>
 
@@ -9458,6 +9459,43 @@ E("fList").addEventListener("click",function(ev){
   if(a==="down"&&i<D.formations.length-1){x=D.formations[i];D.formations[i]=D.formations[i+1];D.formations[i+1]=x}
   marque(); dessF(); stats(); apercu("accueil");
 });
+/* Remplir les liens du site en un geste.
+   ---------------------------------------------------------------
+   Sept adresses a recopier sur un telephone, c'est sept occasions
+   de se tromper d'un caractere — et un lien faux dans un message de
+   vente envoie le client sur une page inexistante.
+
+   Les correspondances se font sur le TITRE, pas sur les mots-cles :
+   la formation « Developpement Web » porte « javascript » dans ses
+   mots-cles et serait partie vers la fiche JavaScript.
+
+   Ce bouton ne remplit que les champs VIDES : un lien deja saisi a
+   la main n'est jamais ecrase. Rien n'est enregistre — vous voyez
+   ce qui a ete rempli, et vous decidez. */
+var SITE="https://moraformation.pages.dev/formation.html?f=";
+var FICHES=[["kali",/kali|pentest/i],["hacking",/hacking|cyber/i],
+            ["fullstack",/full.?stack|d.veloppement web|\bweb\b/i],
+            ["maintenance",/maintenance/i],["trading",/trading|smart.?money/i],
+            ["js",/javascript/i],["boost",/boost|facebook ads/i]];
+E("lienF").innerHTML=S("share",18)+"<span>Remplir les liens du site</span>";
+E("lienF").addEventListener("click",function(){
+  var mis=0, sans=[];
+  D.formations.forEach(function(f){
+    if(String(f.lien||"").trim()) return;      // jamais ecraser une saisie
+    var t=String(f.titre||"");
+    for(var i=0;i<FICHES.length;i++){
+      if(FICHES[i][1].test(t)){ f.lien=SITE+FICHES[i][0]; mis++; return }
+    }
+    sans.push(t||"sans titre");
+  });
+  if(!mis && !sans.length){ toast("Toutes les formations ont deja un lien.",true); return }
+  dessF(); if(mis) marque();
+  toast(mis+" lien"+(mis>1?"s":"")+" rempli"+(mis>1?"s":"")+
+        (sans.length?" — sans fiche sur le site : "+sans.join(", ")+
+         ". Laissez ces champs vides plutot qu'un lien au hasard.":"")+
+        " Verifiez, puis Enregistrer.", true);
+});
+
 E("addF").innerHTML=S("plus",18)+"<span>Ajouter une formation</span>";
 E("addF").addEventListener("click",function(){
   var mx=maxF();
