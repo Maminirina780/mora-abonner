@@ -28,6 +28,9 @@ jobs:
       # Un fichier qui ne compile pas ne doit JAMAIS atteindre la Page :
       # le Worker tomberait, et le bot avec lui. Trois secondes de
       # vérification valent mieux qu'une Page muette.
+      - name: La console s executera-t-elle ?
+        run: node bot-messenger/verif/console.mjs
+
       - name: Vérifier la syntaxe du Worker
         run: node --check bot-messenger/worker.js
 
