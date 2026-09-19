@@ -351,6 +351,7 @@ Misaotra betsaka! Vantany vao voamarina izany dia ho tonga ao anaty Drive-nao ny
     autreMoyen:   "💳 Fomba hafa",
     programme:    "📄 Programme",
     carteVidiny:  "💬 Vidiny",
+    voirFiche:    "📖 Hijery bebe kokoa",
     langue:       "🌐 Fiteny"
   },
 
@@ -2019,6 +2020,26 @@ function fichesSite(f, base) {
   };
 }
 
+/**
+ * L'adresse d'une IMAGE, et rien d'autre.
+ *
+ * Facebook va chercher l'image lui-meme. Si l'adresse n'en est pas une
+ * — une page de resultats Google collee depuis le telephone, par
+ * exemple — il n'affiche pas d'erreur : il laisse un rectangle gris au
+ * milieu du carrousel. Le client voit une boutique a moitie cassee, et
+ * personne n'est prevenu.
+ *
+ * On exige donc une vraie extension d'image. Une adresse refusee laisse
+ * la carte SANS image, ce qui est propre.
+ */
+function imageValide(v) {
+  const s = String(v == null ? "" : v).trim();
+  if (!s || s.length > 500) return "";
+  if (!/^https:\/\/[^\s"'<>\\]+$/i.test(s)) return "";
+  const chemin = s.split("?")[0].split("#")[0];
+  return /\.(jpe?g|png|gif|webp)$/i.test(chemin) ? s : "";
+}
+
 // L'adresse d'un fichier a telecharger. On n'accepte QUE du https complet.
 // Sans ce filtre, une adresse mal collee — ou un « javascript: » glisse par
 // quelqu'un qui aurait le mot de passe — deviendrait un bouton piege sur la
@@ -2074,11 +2095,9 @@ function messageMoyen(m, d) {
 function messageFormation(f, d) {
   const p = String(d.textes.prefixeFormation || "").trim();
   let t = (p ? p + " " : "") + f.titre + "\n" + d.etiquettePrix + " " + f.prix + "\n\n" + f.detail;
-  // Le lien vers la fiche du site, quand il y en a un. Il vient en
-  // dernier, apres l'argumentaire : un client qui a lu jusqu'au bout
-  // est celui qui veut en voir plus. Aucune formation n'est obligee
-  // d'en avoir un — sans lien, la ligne n'existe pas.
-  if (f.lien) t += "\n\n" + String(d.textes.voirFiche || "👉 Jereo ny formation :").trim() + " " + f.lien;
+  // L'adresse n'est PAS collee dans le texte : elle part juste apres,
+  // dans un vrai bouton. Une adresse brute au milieu d'un message se
+  // lit mal sur un telephone, et personne ne recopie une URL a la main.
   // Trois sauts de ligne = coupure OBLIGATOIRE. La note part toujours dans
   // son propre message : c'est une remarque, pas la suite de l'argumentaire.
   if (f.avecNote && d.note && d.note.trim()) t += "\n\n\n" + d.note.trim();
@@ -3030,7 +3049,29 @@ async function router(env, psid, commande, d, lg, citer) {
     // Marque la fiche comme lue : elle ne sera pas recitee pendant 6 h.
     await poser(env, "vu:" + psid + ":" + commande.slice(1), VU_TTL);
   }
-  return envoyerHumain(env, psid, m, d, lg, false, citer);
+  const r = await envoyerHumain(env, psid, m, d, lg, false, citer);
+
+  /* La fiche du site, en bouton.
+     ------------------------------------------------------------------
+     Il part dans sa propre bulle, APRES l'argumentaire : Facebook ne
+     permet pas de mettre un bouton web sous un simple texte, et les
+     reponses rapides ne peuvent pas ouvrir une adresse. C'est donc un
+     petit modele « bouton », et le client a un vrai bouton a toucher
+     au lieu d'une adresse a recopier. */
+  if (commande.charAt(0) === "F") {
+    const f = d.formations.find(x => String(x.id) === commande.slice(1));
+    if (f && f.lien) {
+      await envoyer(env, psid, {
+        attachment: { type: "template", payload: {
+          template_type: "button",
+          text: String(d.textes.voirFiche || "👉 Jereo ny formation eto :").trim(),
+          buttons: [{ type: "web_url", url: f.lien,
+                      title: couperBouton(d.boutons.voirFiche || "📖 Fiche") }]
+        }}
+      });
+    }
+  }
+  return r;
 }
 
 
@@ -3107,7 +3148,12 @@ function carrousel(d) {
               payload: f.surMesure ? "AGENT" : "PAIEMENT" }
           ]
         };
-        if (f.image) carte.image_url = f.image;
+        const img = imageValide(f.image);
+        if (img) carte.image_url = img;
+        // Le lien de la fiche devient un vrai bouton. Facebook en
+        // accepte trois par carte : il reste donc la place.
+        if (f.lien) carte.buttons.push({ type: "web_url", url: f.lien,
+                                         title: couperBouton(d.boutons.voirFiche || "📖 Fiche") });
         return carte;
       })
     }}
@@ -3545,6 +3591,10 @@ function iaCatalogue(d) {
     t += "- " + f.titre + " — " + f.prix + "\n";
     const r = String(f.detail || "").split("\n").filter(Boolean).slice(0, 6).join(" ");
     if (r) t += "  " + r.slice(0, 260) + "\n";
+    // L'assistant a le droit de donner l'adresse de la fiche : elle
+    // vient de la base, il ne l'invente pas. Sans elle, il decrivait la
+    // formation sans jamais pouvoir dire ou la voir.
+    if (f.lien) t += "  fiche : " + f.lien + "\n";
   });
   t += "\nMOYENS DE PAIEMENT :\n";
   d.moyens.forEach(m => {
@@ -3585,6 +3635,12 @@ function iaConsignes(d, lg) {
     "VENDRE SANS FORCER : termine chaque reponse par UNE question courte ou une proposition concrete qui fait avancer — « Iza amin'ireo no mahaliana anao ? », « Tianao ve ny handray ny fandoavana ? ». Jamais deux questions dans le meme message. Jamais d insistance : si le client hesite, rassure-le sur ce qu il obtient, et laisse-lui la main.",
     "",
     "MISE EN FORME : ta reponse s affiche dans Messenger sur un telephone. Les tableaux, le gras, les titres et le Markdown n y existent pas et s affichent en caracteres bruts. Pour comparer plusieurs choses, ecris une ligne par element, courte, avec un tiret devant. Jamais de barres verticales ni de lignes de tirets.",
+    "",
+    "ENCHAINER SUR LE SUJET EN COURS : si le client dit qu il veut apprendre, commencer, s inscrire ou en savoir plus SANS nommer de formation, ne lui redemande pas laquelle. Prends la formation qui correspond au sujet dont vous venez de parler dans les derniers messages, presente-la avec son prix et deux ou trois points concrets du programme, puis propose l etape suivante. Ne redemande laquelle que si aucun sujet precis n a encore ete aborde.",
+    "",
+    "AUTORITE : tu connais ces formations, leur contenu et leur public. Affirme au lieu d hesiter : « ity no mety aminao » plutot que « angamba ». Quand le client hesite entre plusieurs choses, recommande-en UNE et dis pourquoi elle lui convient. Ne dis jamais « je pense » ni « peut-etre » sur ce qui est ecrit dans le catalogue — ce sont des faits, pas des opinions. Mais ne t avance jamais sur ce qui n y figure pas.",
+    "",
+    "LIENS : quand une formation a une fiche, donne son adresse telle qu elle figure au catalogue, jamais une adresse reconstruite ou devinee.",
     "",
     "CE QUE TU PEUX FAIRE LIBREMENT :",
     "Expliquer et enseigner. Le client peut poser une question technique sur les sujets des formations (Termux, Kali Linux, developpement web, maintenance informatique, reseaux, cyber cafe, Windows Server). Reponds utilement et pedagogiquement, comme un formateur patient. C est la raison d etre de cet assistant.",
@@ -7472,6 +7528,7 @@ var VUES=[
 var BTNS=[["catalogue","Catalogue"],["paiement","Paiement"],["agent","Agent"],["acheter","Acheter"],
  ["demanderPrix","Demander le prix"],["retourMenu","Retour au menu"],["retourListe","Retour à la liste"],
  ["autreMoyen","Autre moyen"],["programme","Programme (carte)"],["carteVidiny","Prix (carte)"],
+ ["voirFiche","Voir la fiche (carte)"],
  ["langue","Langue"]];
 var MOTS=[["declencheurs","Ouvrir le menu","Comparaison exacte sur le message entier. Exemple : /ividy, menu"],
  ["salutations","Salutations en début de message","Ouvre le menu si le message COMMENCE par un de ces mots. « Salama tompoko » fonctionne. La casse n'a aucune importance."],
