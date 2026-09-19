@@ -1,0 +1,42 @@
+# Reproduire EXACTEMENT ce que fait le navigateur, y compris la requete
+# preparatoire (OPTIONS) qu'un curl ordinaire ne declenche pas. Le
+# widget echoue sur les POST alors que les GET passent : c'est la
+# signature d'un refus a cette etape-la, invisible autrement.
+name: Diagnostic chatbot
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Requete preparatoire, puis POST
+        run: |
+          api="https://mora-chatbot-saas.mora-abonner.workers.dev"
+          site="https://moraformation.pages.dev"
+
+          echo "=========== 1. OPTIONS (ce que le navigateur demande d'abord)"
+          curl -s -i -X OPTIONS "$api/api/chat" \
+            -H "Origin: $site" \
+            -H "Access-Control-Request-Method: POST" \
+            -H "Access-Control-Request-Headers: content-type" | head -20
+
+          echo
+          echo "=========== 2. POST (la vraie question)"
+          curl -s -i -X POST "$api/api/chat" \
+            -H "Origin: $site" \
+            -H "Content-Type: application/json" \
+            -d '{"bot_id":"mf_8f3a2c91b47d","message":"salama misy kali ve"}' | head -30
+
+          echo
+          echo "=========== 3. GET config (celui qui marche deja)"
+          curl -s -i "$api/api/bot/mf_8f3a2c91b47d/config" -H "Origin: $site" | head -15
+
+          echo
+          echo "=========== 4. Le widget servi au site"
+          curl -s "$api/widget.js" -o /tmp/w.js -w 'HTTP %{http_code} / %{size_download} octets\n'
+          echo -n "la bulle s'efface a l'ouverture : "
+          grep -c "cb-actif" /tmp/w.js
+          echo -n "le decalage est reglable : "
+          grep -c "cb-bas" /tmp/w.js
