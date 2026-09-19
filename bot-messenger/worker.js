@@ -1541,6 +1541,7 @@ export default {
         if (probleme) return json({ erreur: probleme }, 400);
 
         await env.CATALOGUE.put("donnees", JSON.stringify(d));
+        viderCache();   // la console doit voir son enregistrement tout de suite
         return json({ ok: true });
       }
     }
@@ -2051,14 +2052,34 @@ function lienApp(v) {
   return /^https:\/\/[^\s"'<>\\]+$/i.test(s) ? s : "";
 }
 
+/* Le catalogue etait relu a chaque evenement — et Facebook en envoie
+   deux par message, puisqu'il renvoie aussi l'echo de la reponse. Un
+   reglage ne change pourtant pas entre deux messages.
+   ------------------------------------------------------------------
+   Le cache vit dans l'isolat, pas entre les isolats : une modification
+   faite dans la console met donc au plus 30 secondes a s'appliquer
+   partout. C'est le prix, et il est explicite — une console qui
+   semblerait ne rien enregistrer serait bien pire.
+   Toute ecriture depuis la console vide ce cache-la immediatement. */
+let cacheD = null, cacheT = 0;
+const CACHE_MS = 30000;
+
+function viderCache() { cacheD = null; cacheT = 0; }
+
 async function charger(env) {
+  const maintenant = Date.now();
+  if (cacheD && maintenant - cacheT < CACHE_MS) return cacheD;
+
+  let d = null;
   if (env.CATALOGUE) {
     const brut = await env.CATALOGUE.get("donnees");
     if (brut) {
-      try { return fusionner(JSON.parse(brut)); } catch (e) { /* donnees abimees */ }
+      try { d = fusionner(JSON.parse(brut)); } catch (e) { /* donnees abimees */ }
     }
   }
-  return fusionner(DEFAUT);
+  if (!d) d = fusionner(DEFAUT);
+  cacheD = d; cacheT = maintenant;
+  return d;
 }
 
 // Combien de boutons fixes sont allumes
@@ -2281,6 +2302,7 @@ async function convLire(env, psid) {
    « attente » est le coeur de l'affaire : il passe a vrai des qu'un client
    ecrit, et ne retombe que lorsque VOUS repondez. Une reponse du bot ne
    l'eteint pas — c'est justement ce qu'on veut voir en rouge. */
+let dernierPouls = 0;
 async function convAjouter(env, psid, msg, patch) {
   if (!env.CATALOGUE) return;
   const c = await convLire(env, psid);
@@ -2296,11 +2318,17 @@ async function convAjouter(env, psid, msg, patch) {
   // en plein milieu du traitement d'un message, avant meme que le bot ait
   // repondu. Il est resolu plus tard, quand vous ouvrez la boite.
   await poserVal(env, "conv:" + psid, JSON.stringify(c), CONV_TTL);
-  // Le « pouls » : une seule cle qui dit « quelque chose a bouge ».
-  // C'est elle que la console interroge toutes les 8 secondes, au lieu de
-  // relire toutes les conversations — ce qui epuiserait le quota de
-  // lectures de Cloudflare en une journee.
-  await poserVal(env, "conv_maj", String(Date.now()), CONV_TTL);
+  /* Le « pouls » : une seule cle qui dit « quelque chose a bouge ».
+     Elle ne sert qu'a la console, qui le lit toutes les huit
+     secondes pour savoir s'il faut recharger la boite. L'ecrire a
+     chaque message consommait une part du quota gratuit d'ecritures
+     pour une precision dont personne n'a besoin : la console rechargera
+     au plus dix secondes plus tard. */
+  const battement = Date.now();
+  if (battement - dernierPouls >= 10000) {
+    dernierPouls = battement;
+    await poserVal(env, "conv_maj", String(battement), CONV_TTL);
+  }
 }
 
 /* Le nom du client. Facebook l'accorde avec le simple jeton de la Page.
@@ -2369,7 +2397,24 @@ async function noterIncident(env, etape, erreur) {
   await poserVal(env, "diagnostic:incident", JSON.stringify({ quand: new Date().toISOString(), etape: etape, message: message }), DIAGNOSTIC_TTL);
 }
 
+/* Ce repere sert UNIQUEMENT au diagnostic de la console : « le bot
+   a-t-il parle recemment ? ». Il etait ecrit a chaque bulle — une
+   reponse de quatre bulles coutait quatre ecritures, pour une
+   information qui ne change pas d'une bulle a l'autre.
+
+   Cloudflare offre 1000 ecritures KV par jour. Ce seul repere en
+   consommait la moitie, et le bot s'arretait de fonctionner en fin de
+   journee pour une ligne de diagnostic.
+
+   Un quart d'heure de fraicheur suffit largement a repondre a la
+   question posee. Le compteur vit dans l'isolat : il peut se remettre a
+   zero, ce qui fait au pire quelques ecritures de plus, jamais moins de
+   fiabilite. */
+let dernierSortantEcrit = 0;
 async function noterReponse(env, type) {
+  const maintenant = Date.now();
+  if (maintenant - dernierSortantEcrit < 900000) return;
+  dernierSortantEcrit = maintenant;
   await poserVal(env, "diagnostic:sortant", JSON.stringify({ quand: new Date().toISOString(), type: type || "reponse Messenger" }), DIAGNOSTIC_TTL);
 }
 
@@ -4259,8 +4304,24 @@ async function envoyerHumain(env, psid, message, d, lg, texteDejaBon, repondA) {
    plus tard, Facebook renvoie ce message en echo, avec ce meme identifiant.
    C'est la preuve DIRECTE que l'echo vient du robot et non de vous — sans
    dependre de la comparaison des app_id, qui peut manquer. */
+let appIdVu = false;
 async function noterEnvoi(env, r) {
-  if (r && r.message_id) await poser(env, "bot:" + r.message_id, 900);
+  if (!r || !r.message_id) return r;
+
+  /* Ce marqueur existe pour reconnaitre a coup sur l'echo d'un message
+     parti du bot, quand Facebook refuse de nous dire notre propre
+     app_id. Des que cet app_id est connu — il l'est apres le tout
+     premier message, et pour un mois — la comparaison suffit, et le
+     marqueur ne sert plus a rien.
+
+     Il etait pourtant ecrit a chaque bulle. Sur le palier gratuit, ou
+     Cloudflare offre 1000 ecritures par jour, c'etait la seconde moitie
+     du quota depensee pour une information deja connue. */
+  // Une fois l'app_id vu, il l'est pour un mois : le retenir dans
+  // l'isolat evite meme la lecture. Au pire l'isolat repart a zero et
+  // on relit une fois — jamais on ne se trompe.
+  if (!appIdVu) appIdVu = !!(await lireVal(env, "app_id"));
+  if (!appIdVu) await poser(env, "bot:" + r.message_id, 900);
   return r;
 }
 
