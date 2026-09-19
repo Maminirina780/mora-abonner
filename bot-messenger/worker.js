@@ -2323,7 +2323,26 @@ async function traiter(corps, env) {
 
         const notre = await monAppId(env);
         const via = ev.message.app_id ? String(ev.message.app_id) : "";
-        const deVous = notre ? (via !== String(notre)) : !via;
+
+        /* Ce message porte-t-il un identifiant que le bot vient d'emettre ?
+           Si oui, il vient du robot, quoi que disent les app_id. */
+        const duBot = mid ? await pose(env, "bot:" + mid) : false;
+
+        /* Et puisque nous savons avec CERTITUDE que cet echo vient de nous,
+           l'app_id qu'il porte est le NOTRE : on l'apprend sur le terrain.
+           C'est ce qui repare le cas qui faisait echouer le silence — quand
+           Facebook refuse de nous dire notre propre identifiant, vos
+           reponses depuis Meta Business Suite etaient classees « robot » et
+           le bot continuait de parler par-dessus vous. Un seul message du
+           bot suffit desormais a retablir la bonne lecture, pour un mois. */
+        if (duBot && via && !notre) await poserVal(env, "app_id", via, 30 * 86400);
+
+        /* Tout ce qui ne vient pas de notre application vient d'un humain :
+           vous, depuis n'importe quel outil de Meta. Tant que notre app_id
+           reste inconnu on s'en tient a l'ancienne lecture — se tromper
+           dans l'autre sens ferait taire le bot devant ses propres
+           messages, et il n'en sortirait plus jamais. */
+        const deVous = duBot ? false : (notre ? (via !== String(notre)) : !via);
 
         if (client) {
           const c = await convLire(env, client);
@@ -4053,13 +4072,22 @@ async function envoyerHumain(env, psid, message, d, lg, texteDejaBon, repondA) {
    S'il refuse le rattachement — message trop ancien, identifiant devenu
    invalide — on renvoie SANS. Le contenu compte plus que la presentation :
    un client prefere une reponse simple a pas de reponse du tout. */
+/* Retient l'identifiant de chaque message parti DU BOT. Quelques secondes
+   plus tard, Facebook renvoie ce message en echo, avec ce meme identifiant.
+   C'est la preuve DIRECTE que l'echo vient du robot et non de vous — sans
+   dependre de la comparaison des app_id, qui peut manquer. */
+async function noterEnvoi(env, r) {
+  if (r && r.message_id) await poser(env, "bot:" + r.message_id, 900);
+  return r;
+}
+
 async function envoyer(env, psid, message, repondA) {
   const corps = { recipient: { id: psid }, messaging_type: "RESPONSE", message: message };
   if (!repondA) {
     const simple = await appel(env, "/me/messages", corps);
     if (simple && simple.error) await noterIncident(env, "envoi_messenger", simple);
     else await noterReponse(env, "reponse Messenger");
-    return simple;
+    return noterEnvoi(env, simple);
   }
   const r = await appel(env, "/me/messages", Object.assign({ reply_to: { mid: repondA } }, corps));
   if (r && r.error) {
@@ -4068,10 +4096,10 @@ async function envoyer(env, psid, message, repondA) {
     const simple = await appel(env, "/me/messages", corps);
     if (simple && simple.error) await noterIncident(env, "envoi_apres_citation", simple);
     else await noterReponse(env, "reponse Messenger sans citation");
-    return simple;
+    return noterEnvoi(env, simple);
   }
   await noterReponse(env, "reponse Messenger citee");
-  return r;
+  return noterEnvoi(env, r);
 }
 async function action(env, psid, sender_action) {
   return appel(env, "/me/messages", { recipient: { id: psid }, sender_action: sender_action });

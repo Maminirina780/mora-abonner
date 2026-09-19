@@ -53,6 +53,49 @@ conversation de vente.
 
 Corrigé : il suffit maintenant qu'**un** moteur soit disponible.
 
+### 4. Le silence de 30 minutes ne s'armait pas toujours
+
+Quand vous répondez vous-même à un client, le bot doit se taire devant lui —
+30 minutes par défaut, réglable. Ce silence s'arme en reconnaissant *qui* a
+écrit le message parti de la Page : vous, ou le robot.
+
+La reconnaissance reposait uniquement sur la comparaison des `app_id`. Or
+`monAppId()` renvoie `null` dès que Facebook refuse de nous donner notre propre
+identifiant d'application. Le code retombait alors sur « pas d'`app_id` = c'est
+vous » — vrai depuis l'application Messenger, **faux depuis Meta Business
+Suite**, qui est elle-même une application et signe donc avec *son* `app_id`.
+Vos réponses y étaient classées « robot », le silence ne s'armait pas, et le
+bot continuait de parler par-dessus vous en pleine négociation.
+
+Corrigé par une preuve directe, qui ne dépend plus des `app_id` :
+
+- le bot retient l'identifiant de **chaque** message qu'il envoie (`noterEnvoi`) ;
+- l'écho qui revient quelques secondes plus tard porte ce même identifiant :
+  c'est la preuve que le message vient du robot ;
+- et puisque cet écho vient certainement de nous, l'`app_id` qu'il porte est le
+  nôtre — le Worker **l'apprend sur le terrain** et le garde un mois. Un seul
+  message du bot suffit donc à rétablir la bonne lecture des réponses envoyées
+  depuis Business Suite.
+
+Le repli en cas d'`app_id` encore inconnu reste volontairement l'ancien : se
+tromper dans l'autre sens ferait taire le bot devant ses propres messages, et
+il n'en sortirait plus jamais.
+
+## Le silence après votre réponse
+
+Réglages déjà présents dans `/admin` → Conversations :
+
+- **interrupteur** : le silence est actif ou non ;
+- **compteur principal** : la durée pour tous les clients, de 1 minute à
+  12 heures, **30 minutes par défaut** ;
+- **réglage individuel** : une durée propre à une conversation, qui remplace
+  la valeur générale pour ce client-là.
+
+Ce qui reste servi pendant le silence : **le clic sur un bouton**, et lui seul.
+C'est une demande explicite du client, que vous n'avez pas interceptée ; un
+bouton qui ne répond pas passe pour une panne. Les mots-clés, eux, se taisent
+comme le reste.
+
 ## Déploiement
 
 Ce Worker se gère depuis l'éditeur Cloudflare (un seul fichier) :

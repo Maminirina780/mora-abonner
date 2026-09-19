@@ -1,5 +1,5 @@
 --- /tmp/claude-0/-home-user-mora-abonner/66f0ff32-cf15-59e9-953d-8affba540e93/scratchpad/worker.js.orig	2026-09-19 04:01:48.165921446 +0000
-+++ /tmp/claude-0/-home-user-mora-abonner/66f0ff32-cf15-59e9-953d-8affba540e93/scratchpad/worker.js	2026-09-19 04:02:51.400791591 +0000
++++ bot-messenger/worker.js	2026-09-19 06:47:34.851819598 +0000
 @@ -22,6 +22,7 @@
  const MAX_LG_MENU_PERM  = 30;   // caracteres d'une entree du menu ☰
  const MAX_LG_TEXTE      = 2000; // caracteres d'un message
@@ -8,7 +8,35 @@
  
  const API_VERSION = "v26.0";
  
-@@ -3375,12 +3376,21 @@
+@@ -2322,7 +2323,26 @@
+ 
+         const notre = await monAppId(env);
+         const via = ev.message.app_id ? String(ev.message.app_id) : "";
+-        const deVous = notre ? (via !== String(notre)) : !via;
++
++        /* Ce message porte-t-il un identifiant que le bot vient d'emettre ?
++           Si oui, il vient du robot, quoi que disent les app_id. */
++        const duBot = mid ? await pose(env, "bot:" + mid) : false;
++
++        /* Et puisque nous savons avec CERTITUDE que cet echo vient de nous,
++           l'app_id qu'il porte est le NOTRE : on l'apprend sur le terrain.
++           C'est ce qui repare le cas qui faisait echouer le silence — quand
++           Facebook refuse de nous dire notre propre identifiant, vos
++           reponses depuis Meta Business Suite etaient classees « robot » et
++           le bot continuait de parler par-dessus vous. Un seul message du
++           bot suffit desormais a retablir la bonne lecture, pour un mois. */
++        if (duBot && via && !notre) await poserVal(env, "app_id", via, 30 * 86400);
++
++        /* Tout ce qui ne vient pas de notre application vient d'un humain :
++           vous, depuis n'importe quel outil de Meta. Tant que notre app_id
++           reste inconnu on s'en tient a l'ancienne lecture — se tromper
++           dans l'autre sens ferait taire le bot devant ses propres
++           messages, et il n'en sortirait plus jamais. */
++        const deVous = duBot ? false : (notre ? (via !== String(notre)) : !via);
+ 
+         if (client) {
+           const c = await convLire(env, client);
+@@ -3375,12 +3395,21 @@
  
  // L assistant doit-il repondre a ce message ?
  function iaDoitRepondre(d, env) {
@@ -31,7 +59,7 @@
  // Le catalogue reel, mis a plat pour que l assistant ne puisse pas
  // inventer un prix ou une formation qui n existe pas.
  function iaCatalogue(d) {
-@@ -3441,8 +3451,9 @@
+@@ -3441,8 +3470,9 @@
  // Pourquoi l assistant ne prendrait-il PAS le relais ? Sert au Simulateur :
  // « le bot se tait » sans raison est le pire des messages pour vous.
  function raisonSilenceIa(d, env) {
@@ -43,7 +71,7 @@
    if (d.ia.mode === "jamais")
      return "Aucun mot reconnu. L'assistant est regle sur « Ne jamais repondre ».";
    if (d.ia.mode === "absent" && !d.ia.absent)
-@@ -3526,7 +3537,19 @@
+@@ -3526,7 +3556,19 @@
    return {
      system_instruction: { parts: [{ text: iaConsignes(d, lg) }] },
      contents: passe.concat([{ role: "user", parts: dernier }]),
@@ -64,7 +92,7 @@
      safetySettings: [
        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
-@@ -3554,7 +3577,23 @@
+@@ -3554,7 +3596,23 @@
                encodeURIComponent(cle);
    try {
      // Un seul appel par message : le quota gratuit se compte a l'appel.
@@ -89,7 +117,7 @@
  
      if (j.error) return { erreur: sansCle(env, expliquerGemini(j.error, d.ia.modele)) };
  
-@@ -3571,8 +3610,15 @@
+@@ -3571,8 +3629,15 @@
        return { erreur: "Google a repondu sans texte" + (raison ? " (" + raison + ")" : "") + "." };
      }
  
@@ -106,7 +134,7 @@
      return {
        texte: couper(t),
        // Visible dans le Simulateur uniquement : une phrase coupee en plein
-@@ -3829,11 +3875,23 @@
+@@ -3829,11 +3894,23 @@
    const m = JSON.parse(JSON.stringify(message));
    const ch = m.attachment && m.attachment.payload;
    if (m.text) m.text = t[k++];
@@ -132,7 +160,7 @@
      (c.buttons || []).forEach(b => { b.title = couperBouton(t[k++]); });
    });
    return m;
-@@ -3858,6 +3916,12 @@
+@@ -3858,6 +3935,12 @@
    return long(t) > MAX_LG_BOUTON ? Array.from(t).slice(0, MAX_LG_BOUTON).join("") : t;
  }
  
@@ -145,7 +173,7 @@
  
  /* --- Le rythme humain --------------------------------------- */
  
-@@ -3868,11 +3932,39 @@
+@@ -3868,11 +3951,39 @@
  //   - trois sauts de ligne = coupure OBLIGATOIRE (la note, par exemple)
  //   - sinon on regroupe les paragraphes en morceaux de taille proche
  //   - un message court part toujours d'un seul bloc
@@ -186,7 +214,7 @@
  
    // 1. Les coupures OBLIGATOIRES d'abord : chacune aura son propre message.
    //    La note d'une formation en fait partie, et elle gagne toujours.
-@@ -3901,7 +3993,13 @@
+@@ -3901,7 +4012,13 @@
      if (!a || !b) break;
      groupes.splice(i, 1, a, b);
    }
@@ -201,7 +229,7 @@
  }
  
  // Envoie un message comme une personne : en plusieurs bulles, avec
-@@ -3925,7 +4023,17 @@
+@@ -3925,7 +4042,17 @@
      // la suite de la meme reponse : les citer toutes donnerait un mur de
      // rappels, exactement ce qu'un humain ne fait jamais.
      resultat = await envoyer(env, psid, m, i === 0 ? repondA : null);
@@ -220,7 +248,44 @@
      if (!dernier) {
        const suivant = parts[i + 1] || "";
        await action(env, psid, "typing_on");
-@@ -9556,4 +9664,4 @@
+@@ -3945,13 +4072,22 @@
+    S'il refuse le rattachement — message trop ancien, identifiant devenu
+    invalide — on renvoie SANS. Le contenu compte plus que la presentation :
+    un client prefere une reponse simple a pas de reponse du tout. */
++/* Retient l'identifiant de chaque message parti DU BOT. Quelques secondes
++   plus tard, Facebook renvoie ce message en echo, avec ce meme identifiant.
++   C'est la preuve DIRECTE que l'echo vient du robot et non de vous — sans
++   dependre de la comparaison des app_id, qui peut manquer. */
++async function noterEnvoi(env, r) {
++  if (r && r.message_id) await poser(env, "bot:" + r.message_id, 900);
++  return r;
++}
++
+ async function envoyer(env, psid, message, repondA) {
+   const corps = { recipient: { id: psid }, messaging_type: "RESPONSE", message: message };
+   if (!repondA) {
+     const simple = await appel(env, "/me/messages", corps);
+     if (simple && simple.error) await noterIncident(env, "envoi_messenger", simple);
+     else await noterReponse(env, "reponse Messenger");
+-    return simple;
++    return noterEnvoi(env, simple);
+   }
+   const r = await appel(env, "/me/messages", Object.assign({ reply_to: { mid: repondA } }, corps));
+   if (r && r.error) {
+@@ -3960,10 +4096,10 @@
+     const simple = await appel(env, "/me/messages", corps);
+     if (simple && simple.error) await noterIncident(env, "envoi_apres_citation", simple);
+     else await noterReponse(env, "reponse Messenger sans citation");
+-    return simple;
++    return noterEnvoi(env, simple);
+   }
+   await noterReponse(env, "reponse Messenger citee");
+-  return r;
++  return noterEnvoi(env, r);
+ }
+ async function action(env, psid, sender_action) {
+   return appel(env, "/me/messages", { recipient: { id: psid }, sender_action: sender_action });
+@@ -9556,4 +9692,4 @@
  </script>
  </body>
  </html>`;
