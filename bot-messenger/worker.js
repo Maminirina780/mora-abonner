@@ -5638,9 +5638,20 @@ select.inp{appearance:none; cursor:pointer; padding-right:42px}
   background-size:400% 100%; animation:shim 1.3s ease-in-out infinite; border-radius:var(--r2)}
 @keyframes shim{0%{background-position:100% 0}100%{background-position:0 0}}
 
-.bar-b{position:fixed; left:0; right:0; bottom:0; z-index:75; background:var(--glass);
+/* Ancree au viewport VISUEL, pas au viewport de mise en page. Avec
+   « bottom:0 », l'ouverture du clavier laissait la barre flotter au milieu
+   de l'ecran, du contenu visible en dessous d'elle. */
+.bar-b{position:fixed; left:0; right:0; top:calc(var(--vvtop,0px) + var(--vvh,100dvh));
+  transform:translateY(-100%); z-index:75; background:var(--glass);
   backdrop-filter:saturate(180%) blur(16px); border-top:1px solid var(--ln);
   padding:var(--sp3) var(--sp4); padding-bottom:calc(var(--sp3) + var(--sb))}
+/* Sur telephone, les deux barres fixes sont refloutees a CHAQUE image de
+   defilement — c'est le ralentissement le plus visible de la console. Leur
+   fond etant deja opaque a 86 %, le flou ne montrait presque rien : on le
+   retire la ou il coute, on le garde sur grand ecran ou il ne coute rien. */
+@media(max-width:1023px){
+  .top,.bar-b{backdrop-filter:none; -webkit-backdrop-filter:none; background:var(--bg)}
+}
 .bar-in{max-width:920px; margin:0 auto; display:flex; align-items:center; gap:var(--sp3)}
 .bar-in .kbd{display:none; font-size:12px; color:var(--tx3)}
 kbd{font-family:var(--font); font-size:11px; padding:2px 6px; border-radius:5px;
@@ -5732,24 +5743,40 @@ dialog::backdrop{background:rgba(3,7,15,.62); backdrop-filter:blur(3px)}
    donne le mouvement de cadrage. */
 .tu{position:fixed; top:var(--vvtop,0px); left:0; width:var(--vvw,100vw); height:var(--vvh,100dvh); z-index:120; display:none; pointer-events:none}
 .tu.on{display:block}
-.tu-p{position:fixed; background:rgba(3,7,15,.66); backdrop-filter:saturate(125%) blur(10px); pointer-events:none; will-change:top,left,width,height;
-  transition:top 460ms cubic-bezier(.22,1,.36,1), left 460ms cubic-bezier(.22,1,.36,1),
-             width 460ms cubic-bezier(.22,1,.36,1), height 460ms cubic-bezier(.22,1,.36,1), opacity 260ms var(--ez)}
-/* Le cadre lumineux autour de la cible. */
-.tu-c{position:fixed; border:2px solid var(--acc); border-radius:14px; pointer-events:none; animation:tuPulse 2.2s ease-in-out infinite; will-change:top,left,width,height,box-shadow;
-  box-shadow:0 0 0 4px var(--acc-sf), 0 0 34px -4px var(--acc-glow), inset 0 0 18px -12px var(--acc-glow);
+/* Les quatre panneaux ne servent plus : un seul element assombrit desormais
+   tout l'ecran SAUF le trou, par une ombre portee tres etalee. Quatre
+   « backdrop-filter » animes en meme temps, c'etait quatre couches a
+   reflouter a chaque image — de loin ce qui faisait ramer le guide sur
+   telephone. Ils restent dans le HTML pour ne rien casser ailleurs. */
+.tu-p{display:none}
+/* Le cadre lumineux autour de la cible. La derniere ombre, etalee sur
+   100vmax, EST le voile : une seule couche, aucun flou, aucun recalcul de
+   mise en page. Une ombre ne participe pas au defilement de la page : elle
+   ne peut donc pas faire apparaitre de barre de defilement. */
+.tu-c{position:fixed; border:2px solid var(--acc); border-radius:14px; pointer-events:none; will-change:top,left,width,height;
+  box-shadow:0 0 0 4px var(--acc-sf), 0 0 34px -4px var(--acc-glow), 0 0 0 100vmax rgba(3,7,15,.74);
   transition:top 460ms cubic-bezier(.22,1,.36,1), left 460ms cubic-bezier(.22,1,.36,1),
              width 460ms cubic-bezier(.22,1,.36,1), height 460ms cubic-bezier(.22,1,.36,1), border-radius 460ms var(--ez)}
+/* Le battement se fait sur l'opacite d'un anneau, pas sur une ombre de
+   100vmax : le compositeur s'en charge seul, sans repeindre l'ecran. */
+.tu-c::after{content:""; position:absolute; inset:-6px; border:2px solid var(--acc); border-radius:20px;
+  pointer-events:none; animation:tuRing 2.4s ease-out infinite}
+@keyframes tuRing{0%{opacity:.5; transform:scale(1)}70%,100%{opacity:0; transform:scale(1.035)}}
 /* La bulle d'explication. Elle apparait en fondu et monte legerement :
    le mouvement dit « ceci vient d'arriver », il n'est pas decoratif. */
 .tu-b{position:fixed; z-index:121; width:min(340px,calc(100vw - 32px)); max-height:calc(100svh - 32px); overflow:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch;
-  background:var(--sf); border:1px solid var(--ln); border-radius:var(--r4); backdrop-filter:saturate(145%) blur(18px);
+  /* Pas de backdrop-filter ici : le fond de la bulle est OPAQUE (--sf), le
+     flou n'a donc jamais rien montre — il ne coutait que du temps machine. */
+  background:var(--sf); border:1px solid var(--ln); border-radius:var(--r4);
   padding:var(--sp5); box-shadow:0 22px 70px -28px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.04) inset; will-change:top,left,transform,opacity;
   transition:top 460ms cubic-bezier(.22,1,.36,1), left 460ms cubic-bezier(.22,1,.36,1)}
 @supports(height:100dvh){.tu-b{max-height:calc(100dvh - 32px)}}
 .tu-b.vient{animation:tuIn var(--t3) var(--ez)}
 @keyframes tuIn{from{opacity:0; transform:translateY(10px) scale(.985)}to{opacity:1; transform:none}}
-@keyframes tuPulse{0%,100%{box-shadow:0 0 0 4px var(--acc-sf),0 0 28px -4px var(--acc-glow)}50%{box-shadow:0 0 0 7px var(--acc-sf),0 0 38px -2px var(--acc-glow)}}
+@media(prefers-reduced-motion:reduce){
+  .tu-c::after{animation:none; opacity:0}
+  .tu-c,.tu-b{transition:none}
+}
 .tu-b.vient h3{animation:tuTextIn .36s var(--ez) .08s both}
 .tu-b.vient p{animation:tuTextIn .42s var(--ez) .15s both}
 .tu-b.vient .tu-o{animation:tuTextIn .42s var(--ez) .2s both}
@@ -8210,38 +8237,79 @@ var ETAPES=[
   {cle:"9", vue:"apercu", cible:null}
 ];
 
+/* La zone reellement utilisable : le viewport visuel, moins la barre du haut
+   et la barre d'enregistrement du bas. Sans elle, le cadre et la bulle se
+   posaient sous ces deux barres — c'est ce qui laissait l'element explique
+   a moitie cache derriere le bouton vert. */
+function tuZone(){
+  var vv=window.visualViewport;
+  var H=vv?vv.height:innerHeight, W=vv?vv.width:innerWidth;
+  var haut=0, bas=H;
+  var t=document.querySelector(".top");
+  if(t){ var rt=t.getBoundingClientRect(); if(rt.height>0 && rt.top<=8) haut=Math.max(haut,rt.bottom) }
+  var b=document.querySelector(".bar-b");
+  if(b){ var rb=b.getBoundingClientRect(); if(rb.height>0 && rb.bottom>=H-8) bas=Math.min(bas,rb.top) }
+  // Ecran minuscule : mieux vaut tout l'espace qu'une bande inexploitable.
+  if(bas-haut<200){ haut=0; bas=H }
+  return {top:haut, bottom:bas, w:W, h:H};
+}
+
+/* Ramene le rectangle a encadrer dans la zone libre, et lui interdit de
+   depasser la moitie de cette zone : il reste ainsi TOUJOURS de la place
+   pour la bulle a cote. Un element plus grand que l'ecran n'est encadre que
+   sur sa partie haute — c'est ce qui manquait a l'etape 6, ou la bulle se
+   posait par-dessus l'element qu'elle etait censee designer. */
+function tuAjuster(r){
+  if(!r) return null;
+  var z=tuZone(), M=12;
+  var t=Math.max(r.top, z.top+M), b=Math.min(r.bottom, z.bottom-M);
+  var maxH=(z.bottom-z.top)*0.5;
+  if(b-t>maxH) b=t+maxH;
+  if(b-t<24){ t=Math.max(z.top+M, Math.min(t, z.bottom-M-24)); b=t+24 }
+  return {top:t, bottom:b, left:r.left, right:r.right, width:r.width, height:b-t};
+}
+
 function tuCadre(r){
-  var m=8, H=innerHeight, W=innerWidth;
-  if(!r){                     // aucune cible : tout est floute, bulle au centre
-    E("tuH").style.cssText="top:0;left:0;width:100%;height:100%";
-    ["tuB","tuG","tuD"].forEach(function(id){ E(id).style.cssText="width:0;height:0" });
-    E("tuC").style.cssText="width:0;height:0;opacity:0";
+  var c=E("tuC"), m=8, z=tuZone();
+  if(!r){   // aucune cible : l'ecran entier s'assombrit, la bulle va au centre
+    c.style.cssText="top:50%;left:50%;width:0;height:0;border-width:0;opacity:1";
     return;
   }
-  var t=Math.max(0,r.top-m), b=Math.min(H,r.bottom+m),
-      g=Math.max(0,r.left-m), d=Math.min(W,r.right+m);
-  E("tuH").style.cssText="top:0;left:0;width:100%;height:"+t+"px";
-  E("tuB").style.cssText="top:"+b+"px;left:0;width:100%;height:"+Math.max(0,H-b)+"px";
-  E("tuG").style.cssText="top:"+t+"px;left:0;width:"+g+"px;height:"+(b-t)+"px";
-  E("tuD").style.cssText="top:"+t+"px;left:"+d+"px;width:"+Math.max(0,W-d)+"px;height:"+(b-t)+"px";
-  E("tuC").style.cssText="top:"+t+"px;left:"+g+"px;width:"+(d-g)+"px;height:"+(b-t)+"px;opacity:1";
+  var t=Math.max(0,r.top-m), b=Math.min(z.h,r.bottom+m),
+      g=Math.max(0,r.left-m), d=Math.min(z.w,r.right+m);
+  c.style.cssText="top:"+t+"px;left:"+g+"px;width:"+Math.max(0,d-g)+"px;height:"+Math.max(0,b-t)+"px;opacity:1";
 }
 
 function tuPlacer(r){
-  var bu=E("tuBulle"), H=innerHeight, W=innerWidth;
+  var bu=E("tuBulle"), z=tuZone(), W=z.w, M=12;
   bu.style.display="";
+  bu.style.maxHeight="";                    // on repart de la hauteur naturelle
   var h=bu.offsetHeight||220, l=bu.offsetWidth||340;
-  var safeTop=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--st"))||0;
-  var safeBottom=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sb"))||0;
+
+  // Une bulle plus haute que la zone deborderait forcement sur quelque chose.
+  var zoneH=(z.bottom-z.top)-2*M;
+  if(h>zoneH){ bu.style.maxHeight=Math.round(zoneH)+"px"; h=zoneH }
+
   var top, left;
-  if(!r){ top=(H-h)/2; left=(W-l)/2 }
+  if(!r){ top=z.top+((z.bottom-z.top)-h)/2; left=(W-l)/2 }
   else {
-    // La bulle reste dans l'écran et ne masque jamais la cible encadrée.
-    top = (r.bottom+16+h<=H-safeBottom) ? r.bottom+16 : (r.top-16-h>=safeTop ? r.top-16-h : (H-h)/2);
-    left = Math.min(Math.max(12, r.left), Math.max(12,W-l-12));
+    var placeBas=z.bottom-(r.bottom+16), placeHaut=(r.top-16)-z.top;
+    if(h<=placeBas)        top=r.bottom+16;          // dessous : le cas normal
+    else if(h<=placeHaut)  top=r.top-16-h;           // dessus
+    else {
+      /* Ni dessous ni dessus en entier. On prend le cote le plus large et on
+         REDUIT la bulle pour qu'elle y tienne. L'ancien code la centrait,
+         c'est-a-dire qu'il la posait pile sur l'element a montrer. */
+      var dessous=placeBas>=placeHaut;
+      var dispo=Math.max(140,(dessous?placeBas:placeHaut)-M);
+      bu.style.maxHeight=Math.round(dispo)+"px";
+      h=Math.min(h,dispo);
+      top=dessous ? r.bottom+16 : r.top-16-h;
+    }
+    left=Math.min(Math.max(M,r.left),Math.max(M,W-l-M));
   }
-  top=Math.max(safeTop+12,Math.min(top,H-safeBottom-h-12));
-  left=Math.max(12,Math.min(left,W-l-12));
+  top=Math.max(z.top+M,Math.min(top,z.bottom-h-M));
+  left=Math.max(M,Math.min(left,W-l-M));
   bu.style.top=Math.round(top)+"px";
   bu.style.left=Math.round(left)+"px";
 }
@@ -8341,6 +8409,7 @@ function tuMontrer(){
   tuEcrire(e);
   var poser=function(r){
     if(jeton!==TU.jeton) return;
+    r=tuAjuster(r);
     tuCadre(r); tuPlacer(r);
     var bu=E("tuBulle");
     bu.classList.remove("vient"); void bu.offsetWidth; bu.classList.add("vient");
@@ -8386,7 +8455,7 @@ function tuSuivreCible(){
     tuSuiviFrame=0;
     var e=ETAPES[TU.i], el=e&&(tuVisible(e.cible)||tuVisible(e.secours));
     if(!el) return;
-    var r=el.getBoundingClientRect();
+    var r=tuAjuster(el.getBoundingClientRect());
     tuCadre(r); tuPlacer(r);
   });
 }
