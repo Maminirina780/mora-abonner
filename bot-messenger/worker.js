@@ -320,9 +320,16 @@ Misaotra betsaka! Vantany vao voamarina izany dia ho tonga ao anaty Drive-nao ny
 
     // Moteur de secours : l IA de Cloudflare, dans la maison du Worker.
     // Aucune cle, aucun compte, et surtout un quota TOTALEMENT separe de
-    // celui de Google. Moins bon en malgache : c est un filet, pas un choix.
+    // celui de Google.
+    //
+    // On prend le plus capable que Cloudflare heberge : Llama 3.3 70B,
+    // multilingue et nettement meilleur en malgache que le 8B qui servait
+    // ici — lequel est en plus marque « Deprecated » chez Cloudflare, donc
+    // promis a disparaitre sans prevenir. Il consomme davantage du quota
+    // gratuit, mais ce moteur ne sert QUE quand Google ne repond pas :
+    // quelques messages par jour, pas le flux principal.
     secours: true,
-    modeleSecours: "@cf/meta/llama-3.1-8b-instruct",
+    modeleSecours: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
 
     // Dernier rempart. Si aucun moteur ne repond, le client recoit ceci
     // plutot que le silence. Un client qui patiente vaut infiniment mieux

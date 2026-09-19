@@ -31,9 +31,41 @@ jobs:
       - name: Vérifier la syntaxe du Worker
         run: node --check bot-messenger/worker.js
 
+      # Sans cette vérification, un secret vide ou tronqué ne se voit qu'au
+      # fond du journal de wrangler, sous la forme « it's necessary to set a
+      # CLOUDFLARE_API_TOKEN ». On préfère le dire ici, en clair, avec le
+      # geste à faire. Seules les LONGUEURS sont affichées, jamais les
+      # valeurs — et GitHub masque les secrets dans les journaux de toute façon.
+      - name: Vérifier que les secrets Cloudflare sont posés
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          COMPTE: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          manque=0
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Le secret CLOUDFLARE_API_TOKEN est absent ou vide. Settings -> Secrets and variables -> Actions -> New repository secret, sous ce nom exact."
+            manque=1
+          elif [ "${#TOKEN}" -lt 30 ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN ne fait que ${#TOKEN} caracteres. Un jeton Cloudflare en fait environ 40 : le collage a ete tronque. Regenerez-le (API tokens -> ... -> Roll) et recollez-le en entier."
+            manque=1
+          fi
+          if [ -z "$COMPTE" ]; then
+            echo "::error::Le secret CLOUDFLARE_ACCOUNT_ID est absent ou vide."
+            manque=1
+          elif [ "${#COMPTE}" -ne 32 ]; then
+            echo "::error::CLOUDFLARE_ACCOUNT_ID fait ${#COMPTE} caracteres au lieu de 32. C'est le long code dans l'URL du tableau de bord, juste apres dash.cloudflare.com/."
+            manque=1
+          fi
+          [ "$manque" -eq 0 ] || exit 1
+          echo "Les deux secrets sont presents et de longueur plausible."
+
       - name: Déployer sur Cloudflare
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: bot-messenger
+          # Sans cette ligne, l'action installe une version de wrangler de
+          # plusieurs versions majeures en retard, qui prévient elle-même
+          # qu'elle expose à des « erreurs critiques ».
+          wranglerVersion: '4.135.0'
