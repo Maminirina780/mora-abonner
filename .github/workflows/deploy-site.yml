@@ -56,8 +56,16 @@ jobs:
           fi
           ls -la _site
 
-          grep -q "widget.js" _site/index.html || {
-            echo "::error::le chatbot n'est pas dans index.html"; exit 1; }
+          # Un controle exigeait la presence du chatbot dans la page.
+          # Il a ete retire du site a la demande du proprietaire, et ce
+          # controle a fait echouer la publication suivante : un
+          # garde-fou qui survit a ce qu'il gardait bloque le travail au
+          # lieu de le proteger.
+          #
+          # Ce qu'on verifie vraiment : la page existe et n'est pas vide.
+          [ -s _site/index.html ] || { echo "::error::index.html vide"; exit 1; }
+          grep -qi "</html>" _site/index.html || {
+            echo "::error::index.html tronque"; exit 1; }
 
       - name: Publier
         env:
@@ -79,14 +87,20 @@ jobs:
 
       - name: Verifier la page publiee
         run: |
+          site="https://moraformation.pages.dev"
           for i in 1 2 3 4 5 6; do
-            page=$(curl -sL --max-time 25 "https://moraformation.pages.dev/" || true)
-            if echo "$page" | grep -qi "widget.js"; then
-              echo "Le chatbot est dans la page publiee ($(echo "$page" | wc -c) octets)."
+            page=$(curl -sL --max-time 25 "$site/" || true)
+            # La page doit revenir entiere. Une couverture au hasard doit
+            # se telecharger : c'est la seule preuve que le dossier
+            # d'images est bien arrive, et une image manquante laisse un
+            # rectangle gris dans Messenger sans que rien ne le signale.
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$site/img/kali.jpg" || true)
+            if echo "$page" | grep -qi "</html>" && [ "$code" = "200" ]; then
+              echo "Page publiee ($(echo "$page" | wc -c) octets), couvertures servies."
               exit 0
             fi
-            echo "tentative $i : pas encore ($(echo "$page" | wc -c) octets)"
+            echo "tentative $i : page $(echo "$page" | wc -c) octets, image HTTP $code"
             sleep 10
           done
-          echo "::error::La page publiee ne contient toujours pas le chatbot."
+          echo "::error::La publication n'est pas complete."
           exit 1
