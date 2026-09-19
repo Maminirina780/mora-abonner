@@ -11,6 +11,26 @@ jobs:
   diagnostic:
     runs-on: ubuntu-latest
     steps:
+      - name: La console s execute-t-elle sans erreur ?
+        run: |
+          # Reconstituer la page hors ligne casse des chaines legitimes :
+          # on prend donc la page REELLE, telle que le navigateur la
+          # recoit, et on demande a Node de l analyser. Une erreur ici
+          # arrete le script du navigateur, et tout ce qui est initialise
+          # en fin de fichier — le logo, la liste des langues — reste vide.
+          curl -s --max-time 25 https://bot-mora-abonner.mora-abonner.workers.dev/admin -o page.html
+          echo "page : $(wc -c < page.html) octets"
+
+          node -e '
+            const s = require("fs").readFileSync("page.html", "utf8");
+            const i = s.indexOf("<script>"), j = s.lastIndexOf("</script>");
+            if (i < 0) { console.log("::error::aucun script dans la page"); process.exit(1); }
+            const js = s.slice(i + 8, j);
+            require("fs").writeFileSync("console.js", js);
+            console.log("script : " + (js.length / 1024).toFixed(0) + " ko");
+          '
+          node --check console.js && echo "Le script de la console s analyse sans erreur."
+
       - name: Requete preparatoire, puis POST
         run: |
           api="https://mora-chatbot-saas.mora-abonner.workers.dev"
