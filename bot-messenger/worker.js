@@ -6238,6 +6238,7 @@ body.menu-open{overflow:hidden; overscroll-behavior:none}
           </div>
         </div>
         <div id="msgs"></div>
+        <button class="btn btn-g btn-w" id="resetM">Restaurer les textes d'origine</button>
       </section>
 
       <section class="view" id="v-formations" role="tabpanel">
@@ -9211,6 +9212,30 @@ function waRendu(){
 E("waNum").addEventListener("input",function(){D.whatsapp.numero=this.value;waRendu();marque()});
 E("waBtn").addEventListener("input",function(){D.whatsapp.bouton=this.value;waRendu();marque()});
 E("waMsg").addEventListener("input",function(){D.whatsapp.message=this.value;marque()});
+
+/* Restaurer les textes d'origine.
+   ---------------------------------------------------------------
+   Vider un champ n'est pas le perdre : au moment d'enregistrer, le
+   serveur remplace tout message vide par son texte d'origine AVANT
+   de sauvegarder. Ce bouton vide donc les champs, et ce sont les
+   vrais textes — formels, avec leurs emojis — qui sont ecrits.
+
+   Deux exceptions volontaires, qui restent vides :
+    - la note commune : vide, plus aucune bulle ne s'ajoute a la fin
+      des fiches ;
+    - « formation deja lue » : vide, le bot renvoie simplement la
+      fiche complete, ce qui vaut mieux qu'une phrase de rappel.
+
+   Rien n'est enregistre ici : vous voyez le resultat, et vous
+   decidez. */
+E("resetM").innerHTML=S("load",18)+"<span>Restaurer les textes d'origine</span>";
+E("resetM").addEventListener("click",function(){
+  MSGS.forEach(function(m){ D[m[0]]=""; });
+  msgs(); marque();
+  toast("Textes vides. Appuyez sur Enregistrer : les textes d'origine reviennent, "+
+        "sauf la note commune et « formation deja lue » qui restent vides exprès. "+
+        "Rechargez ensuite la page pour les voir.", true);
+});
 
 /* ---- messages + apercu Messenger ---- */
 function msgs(){
