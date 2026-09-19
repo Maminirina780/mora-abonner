@@ -57,7 +57,11 @@ jobs:
           set -o pipefail
           npx --yes wrangler@4.135.0 pages deploy _site \
             --project-name=moraformation --branch=main 2>&1 | tee sortie.txt || {
-              if grep -qiE "authentication|authorization|not authorized|10000|8000000" sortie.txt; then
+              # Deux pannes distinctes, deux gestes distincts. Les
+              # confondre envoie chercher au mauvais endroit.
+              if grep -q "9109" sortie.txt; then
+                echo "::error::Le jeton stocke dans CE depot n'est plus valable (9109). Il a probablement ete regenere ailleurs : recollez la valeur actuelle dans Settings > Secrets > CLOUDFLARE_API_TOKEN de ce depot."
+              elif grep -qiE "authentication|authorization|not authorized|10000|8000000" sortie.txt; then
                 echo "::error::Le jeton n'a pas la permission « Cloudflare Pages ». dash.cloudflare.com/profile/api-tokens -> le jeton -> Edit -> Add more -> Account · Cloudflare Pages · Edit."
               fi
               exit 1
