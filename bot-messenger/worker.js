@@ -829,8 +829,16 @@ export default {
         const session = "s_" + alea(24);
         // « - » et non une chaine vide : une valeur vide ne se relit pas,
         // la session aurait ete invalide des la seconde suivante.
-        await poserVal(envGlobal, "sess:" + session, ORIGINE, SESSION_TTL);
-        return json({ ok: true, session: session, pageNom: "", email: "", origine: true });
+        const ecrit = await poserVal(envGlobal, "sess:" + session, ORIGINE, SESSION_TTL);
+        if (ecrit) return json({ ok: true, session: session, pageNom: "", email: "", origine: true });
+
+        // Le stockage refuse d ecrire — quota du jour atteint, le plus
+        // souvent. Sans ce secours, le bon mot de passe renvoyait un
+        // jeton qui ne correspondait a rien, et le proprietaire restait
+        // dehors sans comprendre.
+        const signe = await jetonSigne(envGlobal, "", SESSION_TTL);
+        if (signe) return json({ ok: true, session: signe, pageNom: "", email: "", origine: true });
+        return json({ erreur: "Le stockage refuse d ecrire (quota du jour atteint). Reessayez apres minuit UTC." }, 503);
       }
 
       const id = await lireVal(envGlobal, "email:" + email);
@@ -847,13 +855,19 @@ export default {
                               "laissez l'adresse vide et entrez le mot de passe d'origine." }, 401);
 
       const session = "s_" + alea(24);
-      await poserVal(envGlobal, "sess:" + session, id, SESSION_TTL);
-      return json({ ok: true, session: session, pageNom: compte.pageNom, email: compte.email });
+      if (await poserVal(envGlobal, "sess:" + session, id, SESSION_TTL))
+        return json({ ok: true, session: session, pageNom: compte.pageNom, email: compte.email });
+
+      const signe = await jetonSigne(envGlobal, id, SESSION_TTL);
+      if (signe) return json({ ok: true, session: signe, pageNom: compte.pageNom, email: compte.email });
+      return json({ erreur: "Le stockage refuse d ecrire (quota du jour atteint). Reessayez apres minuit UTC." }, 503);
     }
 
     // --- Se deconnecter -------------------------------------------------
     if (chemin === "/deconnexion" && request.method === "POST") {
       const cle = request.headers.get("x-mot-de-passe") || "";
+      // Un jeton signe ne s efface pas : il n est ecrit nulle part. Il
+      // expire seul, et le navigateur l oublie des maintenant.
       if (cle.indexOf("s_") === 0) await effacerVal(envGlobal, "sess:" + cle);
       return json({ ok: true });
     }
@@ -1844,6 +1858,68 @@ async function compteParId(env, id) {
   try { return JSON.parse(brut); } catch (e) { return null; }
 }
 
+
+/* ---------------------------------------------------------------------
+   UN JETON QUI NE DEPEND D AUCUNE ECRITURE
+   ---------------------------------------------------------------------
+   La connexion enregistrait la session dans le stockage. Quand le quota
+   d ecritures du jour est atteint, cette ecriture echoue en silence : le
+   jeton rendu ne correspondait a rien, et le proprietaire se retrouvait
+   dehors avec le BON mot de passe, sans explication.
+
+   Un jeton signe se verifie par le calcul, sans rien relire. Il sert de
+   secours quand le stockage refuse d ecrire — la session enregistree
+   reste la voie normale, parce qu elle seule peut etre revoquee a la
+   deconnexion.
+
+   La signature utilise le mot de passe d origine comme cle : qui le
+   connait est deja administrateur, et personne d autre ne peut forger
+   un jeton. La date d expiration est DANS le message signe : la changer
+   invalide la signature.
+   ------------------------------------------------------------------ */
+
+function b64url(octets) {
+  let s = ""; for (const o of octets) s += String.fromCharCode(o);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function b64urlOctets(t) {
+  const s = atob(String(t).replace(/-/g, "+").replace(/_/g, "/"));
+  const o = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) o[i] = s.charCodeAt(i);
+  return o;
+}
+
+async function cleSignature(env) {
+  if (!env.ADMIN_PASSWORD) return null;
+  return crypto.subtle.importKey("raw", new TextEncoder().encode(env.ADMIN_PASSWORD),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+}
+
+async function jetonSigne(env, id, dureeS) {
+  const cle = await cleSignature(env);
+  if (!cle) return "";
+  const corps = b64url(new TextEncoder().encode(JSON.stringify({
+    id: id || "", exp: Math.floor(Date.now() / 1000) + (dureeS || 86400)
+  })));
+  const sig = await crypto.subtle.sign("HMAC", cle, new TextEncoder().encode(corps));
+  return "j_" + corps + "." + b64url(new Uint8Array(sig));
+}
+
+async function lireJetonSigne(env, jeton) {
+  const cle = await cleSignature(env);
+  if (!cle) return null;
+  const [corps, sig] = String(jeton).slice(2).split(".");
+  if (!corps || !sig) return null;
+  const attendu = await crypto.subtle.sign("HMAC", cle, new TextEncoder().encode(corps));
+  // Comparaison a temps constant, comme partout ailleurs ici.
+  if (!memeSecret(b64url(new Uint8Array(attendu)), sig)) return null;
+  try {
+    const d = JSON.parse(new TextDecoder().decode(b64urlOctets(corps)));
+    if (!d || typeof d.exp !== "number" || d.exp * 1000 < Date.now()) return null;
+    return d;
+  } catch (e) { return null; }
+}
+
 /* Qui parle ? Trois reponses possibles :
    - le mot de passe historique d'ADMIN_PASSWORD → le compte d'origine
    - un jeton de session valide → le compte correspondant
@@ -1854,6 +1930,19 @@ async function identifier(request, env) {
 
   if (env.ADMIN_PASSWORD && memeSecret(cle, env.ADMIN_PASSWORD))
     return { ok: true, id: "", env: envDuCompte(env, "") };
+
+  if (cle.indexOf("j_") === 0) {
+    const d = await lireJetonSigne(env, cle);
+    if (d && !d.id) return { ok: true, id: "", env: envDuCompte(env, "") };
+    if (d && d.id) {
+      const c = await compteParId(env, d.id);
+      if (c) {
+        const jeton = await dechiffrer(env, c.jeton);
+        return { ok: true, id: d.id, compte: c, env: envDuCompte(env, d.id, jeton) };
+      }
+    }
+    return { ok: false, env: env };
+  }
 
   if (cle.indexOf("s_") === 0) {
     const id = await lireVal(env, "sess:" + cle);
