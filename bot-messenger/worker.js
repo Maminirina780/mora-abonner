@@ -1332,6 +1332,61 @@ export default {
 
     //     Sert la piece. Publique par necessite — Facebook doit pouvoir la
     //     telecharger — mais l'identifiant est aleatoire et elle expire.
+    /* --- Les photos televersees depuis la console -------------------
+       Le proprietaire doit pouvoir mettre SA photo sur une carte sans
+       passer par un hebergeur : trouver une adresse d image sur un
+       telephone est exactement ce qui a produit les rectangles gris
+       (une page de resultats Google collee dans le champ).
+
+       Servie sans expiration, contrairement aux pieces jointes : une
+       carte dont l image disparait au bout d un mois serait pire que
+       pas d image du tout. */
+    if (chemin.indexOf("/photo/") === 0) {
+      const nom = chemin.slice(7);
+      if (!/^[a-z0-9_-]{1,40}\.(jpg|png)$/i.test(nom)) return new Response("Introuvable", { status: 404 });
+      const brut = await lireVal(env, "photo:" + nom);
+      if (!brut) return new Response("Introuvable", { status: 404 });
+      const sep = brut.indexOf("|");
+      const bin = atob(brut.slice(sep + 1));
+      const octets = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) octets[i] = bin.charCodeAt(i);
+      return new Response(octets, { headers: {
+        "Content-Type": brut.slice(0, sep),
+        "X-Content-Type-Options": "nosniff",
+        // Facebook remet l image en cache de son cote ; un an ici evite
+        // de relire le stockage a chaque affichage de carte.
+        "Cache-Control": "public, max-age=31536000, immutable"
+      }});
+    }
+
+    if (chemin === "/admin/photo" && request.method === "POST") {
+      if (!bonMotDePasse(request, env)) return json({ erreur: "Mot de passe incorrect" }, 401);
+      if (!env.CATALOGUE) return json({ erreur: "Le stockage n'est pas branche." }, 500);
+
+      let c;
+      try { c = await request.json(); } catch (e) { return json({ erreur: "Donnees illisibles" }, 400); }
+
+      const type = String(c.type || "");
+      if (["image/jpeg", "image/png"].indexOf(type) === -1)
+        return json({ erreur: "Seuls le JPEG et le PNG sont acceptes." }, 400);
+
+      const data = String(c.data || "");
+      // Base64 : quatre caracteres pour trois octets. On refuse avant de
+      // stocker, pas apres — une cle trop lourde serait refusee par
+      // Cloudflare avec un message que personne ne comprendrait.
+      if (!data || data.length * 3 / 4 > 900000)
+        return json({ erreur: "Photo trop lourde (900 Ko maximum apres reduction)." }, 400);
+      if (!/^[A-Za-z0-9+/=]+$/.test(data)) return json({ erreur: "Photo illisible" }, 400);
+
+      const nom = identifiant("p") + (type === "image/png" ? ".png" : ".jpg");
+      // poserVal avale les erreurs de stockage. Sans ce test, on rendrait
+      // une adresse qui ne mene nulle part, et la carte redeviendrait
+      // grise sans que personne sache pourquoi.
+      const ecrit = await poserVal(env, "photo:" + nom, type + "|" + data);
+      if (!ecrit) return json({ erreur: "Le stockage a refuse la photo. Le quota du jour est peut-etre atteint ; reessayez demain." }, 503);
+      return json({ ok: true, url: new URL(request.url).origin + "/photo/" + nom });
+    }
+
     if (chemin.indexOf("/piece/") === 0) {
       const id = chemin.slice(7);
       if (!/^[a-f0-9]{32}$/i.test(id)) return new Response("Introuvable", { status: 404 });
@@ -9648,6 +9703,13 @@ function dessF(){
       fld("F",i,"titre","Titre complet")+
       "<div class='grid2'>"+fld("F",i,"prix","Prix")+fld("F",i,"motscles","Mots-clés")+"</div>"+
       fld("F",i,"image","Image (adresse https, facultatif)")+
+      "<div class='fld'><div class='lab'><label>Photo depuis cet appareil</label></div>"+
+      "<input type='file' id='ph"+i+"' accept='image/jpeg,image/png' style='display:none'>"+
+      "<button type='button' class='btn btn-g btn-w' data-photo='"+i+"'>Choisir une photo</button>"+
+      (f.image?"<img src='"+esc(f.image)+"' alt='' style='margin-top:10px;width:100%;max-width:320px;"+
+        "border-radius:12px;border:1px solid var(--ln)' onerror=\"this.style.display='none'\">":"")+
+      "<p class='hint'>La photo est reduite a 1200 px et envoyee sur votre bot. "+
+      "Rien a heberger ailleurs : l adresse se remplit toute seule.</p></div>"+
       fld("F",i,"lien","Lien vers la fiche du site (facultatif)","Adresse https complète, par exemple https://moraformation.pages.dev/formation.html?f=kali — elle est ajoutée à la fin du message. Laissez vide pour n'afficher aucun lien.")+
       fld("F",i,"driveId","Dossier Google Drive (identifiant)","La partie de l'adresse après /folders/. Le dossier doit être partagé en Éditeur avec mora-bot-drive@bot-drive-videos.iam.gserviceaccount.com")+
       "<div class='fld'><div class='lab'><label>Livraison</label></div>"+
@@ -9834,6 +9896,62 @@ E("syncF").addEventListener("click",function(){
             ajoutes.length>0);
     })
     .catch(function(e){ b.disabled=false; toast("Lecture du site impossible : "+e.message,false) });
+});
+
+/* Televerser une photo depuis le telephone.
+   ---------------------------------------------------------------
+   Chercher l adresse d une image sur un telephone est ce qui a produit
+   les rectangles gris : une page de resultats Google avait ete collee
+   dans le champ. Le proprietaire choisit donc sa photo, et l adresse se
+   remplit toute seule.
+
+   La reduction se fait ICI, dans le navigateur. Une photo de telephone
+   pese quatre megaoctets ; l envoyer telle quelle epuiserait le forfait
+   de donnees du proprietaire et serait refusee par le stockage. 1200 px
+   de large est la taille que Facebook utilise pour une carte. */
+document.addEventListener("click",function(ev){
+  var b=ev.target.closest&&ev.target.closest("[data-photo]"); if(!b) return;
+  var i=b.getAttribute("data-photo"), champ=E("ph"+i); if(!champ) return;
+  champ.onchange=function(){
+    var fichier=champ.files&&champ.files[0]; if(!fichier) return;
+    if(["image/jpeg","image/png"].indexOf(fichier.type)===-1){
+      toast("Choisissez une photo JPEG ou PNG.",false); return }
+    b.disabled=true; b.textContent="Envoi…";
+
+    var lect=new FileReader();
+    lect.onload=function(){
+      var im=new Image();
+      im.onload=function(){
+        var max=1200, e=Math.min(1,max/Math.max(im.width,im.height));
+        var c=document.createElement("canvas");
+        c.width=Math.round(im.width*e); c.height=Math.round(im.height*e);
+        c.getContext("2d").drawImage(im,0,0,c.width,c.height);
+        // Toujours en JPEG : un PNG de photo pese trois fois plus pour
+        // un resultat que personne ne distingue sur un telephone.
+        var url=c.toDataURL("image/jpeg",.85);
+        var data=url.slice(url.indexOf(",")+1);
+
+        fetch("/admin/photo",{method:"POST",
+          headers:{"Content-Type":"application/json","x-mot-de-passe":mdp},
+          body:JSON.stringify({type:"image/jpeg",data:data})})
+          .then(function(r){return r.json()})
+          .then(function(j){
+            b.disabled=false; b.textContent="Choisir une photo";
+            if(j.erreur){ toast(j.erreur,false); return }
+            D.formations[i].image=j.url;
+            marque(); dessF();
+            toast("Photo envoyee. Verifiez l apercu, puis Enregistrer.",true);
+          })
+          .catch(function(e){ b.disabled=false; b.textContent="Choisir une photo";
+            toast("Envoi impossible : "+e.message,false) });
+      };
+      im.onerror=function(){ b.disabled=false; b.textContent="Choisir une photo";
+        toast("Cette photo n a pas pu etre lue.",false) };
+      im.src=lect.result;
+    };
+    lect.readAsDataURL(fichier);
+  };
+  champ.click();
 });
 
 E("addF").innerHTML=S("plus",18)+"<span>Ajouter une formation</span>";
