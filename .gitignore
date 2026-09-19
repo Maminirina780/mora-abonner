@@ -1,0 +1,10 @@
+# Dossier assemble pour la publication. Il ne contient que des copies
+# des fichiers deja versionnes : le suivre ferait apparaitre chaque
+# publication comme une modification du site, et wrangler avertit a
+# chaque fois que le dossier de travail est « sale ».
+_site/
+
+# Etat local de wrangler.
+.wrangler/
+
+node_modules/
