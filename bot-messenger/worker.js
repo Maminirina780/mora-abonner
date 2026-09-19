@@ -269,6 +269,7 @@ Misaotra betsaka! Vantany vao voamarina izany dia ho tonga ao anaty Drive-nao ny
     labelNumero:      "💰 Nomerao :",
     labelTitulaire:   "👤 Anarana :",
     prefixeFormation: "🎓",
+    voirFiche:        "👉 Jereo ny formation eto :",
     emailRecu:        "✅ Voaray ny adiresy email-nao : {email}",
     emailFormation:   "🎓 Ho an'ny formation « {formation} ».",
     emailSuite:       "📦 Ho tonga aminao ny lien Google Drive ao anatin'ny fotoana fohy, rehefa voamarina ny fandoavam-bolanao. 🙏",
@@ -1897,6 +1898,10 @@ function fusionner(d) {
     prix: f.prix || "",
     image: f.image || "",
     motscles: f.motscles || "",
+    // Adresse de la fiche sur le site. Filtree comme les autres liens :
+    // seul du https complet passe, le reste devient vide. Un lien vide
+    // fait simplement disparaitre la ligne, il n'invente rien.
+    lien: lienApp(f.lien),
     driveId: f.driveId || "",            // dossier/fichier Drive partage avec le robot
     surMesure: !!f.surMesure,
     avecNote: f.avecNote !== false,      // coche par defaut
@@ -1960,6 +1965,11 @@ function messageMoyen(m, d) {
 function messageFormation(f, d) {
   const p = String(d.textes.prefixeFormation || "").trim();
   let t = (p ? p + " " : "") + f.titre + "\n" + d.etiquettePrix + " " + f.prix + "\n\n" + f.detail;
+  // Le lien vers la fiche du site, quand il y en a un. Il vient en
+  // dernier, apres l'argumentaire : un client qui a lu jusqu'au bout
+  // est celui qui veut en voir plus. Aucune formation n'est obligee
+  // d'en avoir un — sans lien, la ligne n'existe pas.
+  if (f.lien) t += "\n\n" + String(d.textes.voirFiche || "👉 Jereo ny formation :").trim() + " " + f.lien;
   // Trois sauts de ligne = coupure OBLIGATOIRE. La note part toujours dans
   // son propre message : c'est une remarque, pas la suite de l'argumentaire.
   if (f.avecNote && d.note && d.note.trim()) t += "\n\n\n" + d.note.trim();
@@ -1991,7 +2001,8 @@ function valider(d) {
     const total = messageFormation(f, d).length;
     if (total > MAX_LG_TEXTE) {
       return n + "le message complet fait " + total + " caracteres (presentation" +
-             (f.avecNote ? " + note commune" : "") + "), le maximum est " + MAX_LG_TEXTE +
+             (f.avecNote ? " + note commune" : "") + (f.lien ? " + lien" : "") +
+             "), le maximum est " + MAX_LG_TEXTE +
              ". Raccourcissez la presentation" + (f.avecNote ? " ou la note" : "") + ".";
     }
   }
@@ -4604,6 +4615,10 @@ function champsGeneres(p, actuel) {
       // On NE reprend PAS les identifiants Drive : ils appartiennent aux
       // anciens produits et n'ont aucun sens pour les nouveaux.
       driveId: "",
+      // Le lien non plus. Une adresse proposee par un modele de langage
+      // a toutes les chances de ne mener nulle part, et un lien mort
+      // dans un message de vente coute plus cher qu'une ligne absente.
+      lien: "",
       image: "",
       surMesure: !!f.surMesure,
       avecNote: f.avecNote !== false
@@ -7368,6 +7383,7 @@ var TXTS=[
  ["labelNumero","Étiquette du numéro","Placée devant le numéro de paiement."],
  ["labelTitulaire","Étiquette du titulaire","Placée devant votre nom, sous le numéro."],
  ["prefixeFormation","Symbole devant le titre d'une formation","Laissez vide pour n'afficher que le titre."],
+ ["voirFiche","Phrase avant le lien de la fiche","Affichee seulement pour les formations qui ont un lien."],
  ["emailRecu","Email reçu — première ligne","Vous pouvez écrire {email}."],
  ["emailFormation","Email reçu — ligne formation","Vous pouvez écrire {formation}. Laissez vide pour ne pas l'afficher."],
  ["emailSuite","Email reçu — fin du message","Ce qui rassure le client sur la suite."],
@@ -7396,7 +7412,11 @@ function totF(f){
   var p=String(D.textes.prefixeFormation||"").trim();
   var e=((p?p+" ":"")+f.titre+"\\n"+D.etiquettePrix+" "+f.prix+"\\n\\n").length;
   var n=(f.avecNote&&D.note&&D.note.trim())?D.note.trim().length+2:0;
-  return e+f.detail.length+n;
+  /* Le lien compte dans la limite de Facebook comme le reste. L'oublier
+     ici ferait afficher un compteur au vert sur un message que Facebook
+     refusera — le pire des cas, puisque rien ne partirait. */
+  var l=f.lien?(String(D.textes.voirFiche||"").trim().length+f.lien.length+3):0;
+  return e+f.detail.length+n+l;
 }
 function marque(){sale=true;E("dirty").className="dirty on";brouillon()}
 function propre(){sale=false;E("dirty").className="dirty"}
@@ -9374,6 +9394,7 @@ function dessF(){
       fld("F",i,"titre","Titre complet")+
       "<div class='grid2'>"+fld("F",i,"prix","Prix")+fld("F",i,"motscles","Mots-clés")+"</div>"+
       fld("F",i,"image","Image (adresse https, facultatif)")+
+      fld("F",i,"lien","Lien vers la fiche du site (facultatif)","Adresse https complète, par exemple https://moraformation.pages.dev/formation.html?f=kali — elle est ajoutée à la fin du message. Laissez vide pour n'afficher aucun lien.")+
       fld("F",i,"driveId","Dossier Google Drive (identifiant)","La partie de l'adresse après /folders/. Le dossier doit être partagé en Éditeur avec mora-bot-drive@bot-drive-videos.iam.gserviceaccount.com")+
       "<div class='fld'><div class='lab'><label>Livraison</label></div>"+
       "<div class='grid2'>"+
@@ -9445,7 +9466,7 @@ E("addF").addEventListener("click",function(){
           " sont pris par les boutons fixes — désactivez-en un dans Libellés, ou supprimez une formation.",false); return}
   var n=1; while(D.formations.some(function(f){return String(f.id)===String(n)}))n++;
   D.formations.push({id:String(n),bouton:n+" Nouvelle",titre:"Nouvelle formation",prix:"0 Ar",
-    image:"",motscles:"",surMesure:false,avecNote:true,detail:"Écrivez ici la présentation."});
+    image:"",motscles:"",lien:"",surMesure:false,avecNote:true,detail:"Écrivez ici la présentation."});
   filtre=""; E("qF").value=""; E("qFc").className="clr";
   marque(); dessF(); stats(); apercu("accueil");
   setTimeout(function(){var l=E("fList").lastElementChild; if(l) l.scrollIntoView({behavior:"smooth",block:"center"})},60);
