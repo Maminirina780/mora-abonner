@@ -1,0 +1,44 @@
+# Regarde la page REELLE telle qu'un visiteur la recoit.
+#
+# Le navigateur du proprietaire peut servir une version en cache, et la
+# session de developpement n'a pas acces au domaine. Ce robot, lui, part
+# d'un cache vide a chaque fois : ce qu'il voit est ce qui est publie.
+name: Verifier le site
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verifier:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Le site sert-il bien le chatbot ?
+        run: |
+          site="https://moraformation.pages.dev"
+          page=$(curl -sL --max-time 25 "$site/")
+
+          echo "=== la balise du chatbot dans la page ==="
+          echo "$page" | grep -i "widget.js" || echo "ABSENTE"
+
+          echo
+          echo "=== le bouton WhatsApp du site ==="
+          echo "$page" | grep -o 'class="fab"[^>]*' || echo "absent"
+
+          echo
+          echo "=== taille de la page ==="
+          echo "$page" | wc -c
+
+          echo
+          echo "=== le widget se telecharge-t-il ? ==="
+          w="https://mora-chatbot-saas.mora-abonner.workers.dev/widget.js"
+          curl -s -o /tmp/w.js -w 'HTTP %{http_code} / %{size_download} octets / type %{content_type}\n' "$w"
+          head -c 200 /tmp/w.js
+
+          echo
+          echo "=== verdict ==="
+          if echo "$page" | grep -qi "widget.js"; then
+            echo "La balise EST dans la page publiee."
+          else
+            echo "La balise N EST PAS dans la page publiee : Cloudflare Pages"
+            echo "n a pas encore reconstruit, ou publie une autre branche."
+          fi
