@@ -1,0 +1,35 @@
+# Configuration de deploiement du Worker « bot-mora-abonner ».
+#
+# ATTENTION, a lire avant le premier deploiement automatique :
+# « wrangler deploy » remplace les BRANCHEMENTS du Worker par ceux declares
+# ici. Un branchement oublie dans ce fichier est un branchement SUPPRIME en
+# production — et perdre CATALOGUE, c'est perdre d'un coup les formations,
+# les textes, les boutons et l'historique des conversations.
+# Les deux branchements ci-dessous sont donc declares explicitement.
+#
+# Les SECRETS (PAGE_ACCESS_TOKEN, VERIFY_TOKEN, GEMINI_API_KEY,
+# GEMINI_API_KEY_2, ADMIN_PASSWORD, CLE_CHIFFREMENT, GOOGLE_SA_JSON, PBKDF)
+# ne sont PAS dans ce fichier et n'ont rien a y faire : Cloudflare les
+# conserve d'un deploiement a l'autre. Ils restent poses dans
+# Settings -> Variables and Secrets, et ne doivent jamais entrer dans Git.
+
+name = "bot-mora-abonner"
+main = "worker.js"
+compatibility_date = "2026-08-09"
+
+# Conserve les variables simples posees a la main dans le tableau de bord,
+# au lieu de les effacer a chaque deploiement.
+keep_vars = true
+
+# L'adresse *.workers.dev, celle que Facebook appelle pour le webhook et
+# celle par laquelle vous ouvrez /admin.
+workers_dev = true
+
+# La memoire du bot : reglages, conversations, demandes, verrous de silence.
+[[kv_namespaces]]
+binding = "CATALOGUE"
+id = "d7b0da3bc5db4a539e8eee81a2f3adc2"   # espace « bot-donnees »
+
+# Le moteur de secours quand Google ne repond pas.
+[ai]
+binding = "AI"

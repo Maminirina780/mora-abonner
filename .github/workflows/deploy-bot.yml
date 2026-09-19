@@ -1,0 +1,39 @@
+# Deploie le Worker du bot Messenger des qu'il change sur main.
+name: Déployer le bot Messenger
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bot-messenger/**'
+      - '.github/workflows/deploy-bot.yml'
+  workflow_dispatch:      # permet aussi de redéployer à la main
+
+# Deux déploiements en même temps se marcheraient dessus : le second gagne,
+# et on ne sait plus lequel est en ligne. On les met à la queue leu leu.
+concurrency:
+  group: deploiement-bot
+  cancel-in-progress: false
+
+jobs:
+  deployer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Un fichier qui ne compile pas ne doit JAMAIS atteindre la Page :
+      # le Worker tomberait, et le bot avec lui. Trois secondes de
+      # vérification valent mieux qu'une Page muette.
+      - name: Vérifier la syntaxe du Worker
+        run: node --check bot-messenger/worker.js
+
+      - name: Déployer sur Cloudflare
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: bot-messenger

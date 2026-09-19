@@ -96,17 +96,60 @@ C'est une demande explicite du client, que vous n'avez pas interceptée ; un
 bouton qui ne répond pas passe pour une panne. Les mots-clés, eux, se taisent
 comme le reste.
 
-## Déploiement
+## Déploiement automatique
 
-Ce Worker se gère depuis l'éditeur Cloudflare (un seul fichier) :
+`.github/workflows/deploy-bot.yml` déploie le Worker sur Cloudflare dès que
+`bot-messenger/` change sur `main`. La syntaxe est vérifiée avant l'envoi :
+un fichier qui ne compile pas n'atteint jamais la Page.
 
-1. Cloudflare → Workers & Pages → `bot-mora-abonner` → Edit code
-2. Remplacer tout le contenu par `worker.js`
-3. Deploy
+À faire **une seule fois** pour l'activer :
 
-Les réglages (textes, formations, boutons, mots-clés) ne sont **pas** dans ce
-fichier : ils vivent dans KV et se modifient sur `/admin`. Ce déploiement ne
-les touche pas.
+1. Créer un jeton d'API sur
+   [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens)
+   → *Create Token* → modèle **« Edit Cloudflare Workers »**.
+2. Dans le dépôt GitHub → Settings → Secrets and variables → Actions →
+   *New repository secret*, ajouter :
+   - `CLOUDFLARE_API_TOKEN` — le jeton créé à l'étape 1
+   - `CLOUDFLARE_ACCOUNT_ID` — visible dans Cloudflare → Workers & Pages,
+     colonne de droite
+
+Ensuite, chaque fusion sur `main` qui touche `bot-messenger/` met le bot à jour
+toute seule. *Actions → Déployer le bot Messenger → Run workflow* permet aussi
+de redéployer à la main.
+
+### Avant le tout premier déploiement automatique
+
+`wrangler deploy` **remplace les branchements** du Worker par ceux déclarés dans
+`wrangler.toml`. Un branchement oublié dans ce fichier est un branchement
+supprimé en production — et perdre `CATALOGUE`, c'est perdre d'un coup les
+formations, les textes, les boutons et l'historique des conversations.
+
+Les deux branchements que le code utilise y sont donc déclarés :
+
+| Variable | Type | Valeur |
+|---|---|---|
+| `CATALOGUE` | KV | espace `bot-donnees` (`d7b0da3b…`) |
+| `AI` | Workers AI | moteur de secours |
+
+**Vérifiez ces deux lignes** dans Cloudflare → `bot-mora-abonner` → Settings →
+Bindings avant la première fusion, et ajoutez à `wrangler.toml` tout
+branchement ou route personnalisée qui y figurerait en plus.
+
+Les **secrets** (`PAGE_ACCESS_TOKEN`, `VERIFY_TOKEN`, `GEMINI_API_KEY`,
+`GEMINI_API_KEY_2`, `ADMIN_PASSWORD`, `CLE_CHIFFREMENT`, `GOOGLE_SA_JSON`,
+`PBKDF`) ne sont pas concernés : Cloudflare les conserve d'un déploiement à
+l'autre. Ils restent dans Settings → Variables and Secrets, et ne doivent
+jamais entrer dans Git.
+
+### Déploiement à la main
+
+Sans attendre GitHub : Cloudflare → Workers & Pages → `bot-mora-abonner` →
+Edit code → remplacer tout le contenu par `worker.js` → Deploy. Cette voie ne
+touche aucun branchement.
+
+Dans les deux cas, les réglages (textes, formations, boutons, mots-clés) ne
+sont **pas** dans ce fichier : ils vivent dans KV et se modifient sur `/admin`.
+Un déploiement ne les touche pas.
 
 ## Réglage à vérifier dans /admin
 
