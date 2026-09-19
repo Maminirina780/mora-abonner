@@ -14,6 +14,7 @@ on:
       - "*.js"
       - "*.css"
       - "*.svg"
+      - "img/**"
       - ".github/workflows/deploy-site.yml"
   workflow_dispatch:
 
@@ -44,6 +45,15 @@ jobs:
             [ -f "$f" ] || { echo "::error::$f manquant"; exit 1; }
             cp "$f" _site/
           done
+
+          # Les couvertures des cartes Messenger. Elles vivent sur le site
+          # du proprietaire, pas chez un tiers : une image hebergee
+          # ailleurs disparait le jour ou l'hebergeur change d'avis, et
+          # c'est la carte du client qui devient grise.
+          if [ -d img ]; then
+            mkdir -p _site/img && cp img/*.jpg _site/img/ 2>/dev/null || true
+            echo "couvertures : $(ls _site/img | wc -l)"
+          fi
           ls -la _site
 
           grep -q "widget.js" _site/index.html || {

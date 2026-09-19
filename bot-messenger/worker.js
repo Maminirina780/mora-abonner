@@ -6415,7 +6415,7 @@ body.menu-open{overflow:hidden; overscroll-behavior:none}
         </div>
         <div id="fList"></div>
         <button class="btn btn-g btn-w" id="syncF">Synchroniser avec le site</button>
-        <button class="btn btn-g btn-w" id="lienF">Remplir les liens du site</button>
+        <button class="btn btn-g btn-w" id="lienF">Remplir les liens et les images</button>
         <button class="btn btn-g btn-w" id="addF">Ajouter une formation</button>
       </section>
 
@@ -9665,26 +9665,55 @@ E("fList").addEventListener("click",function(ev){
    la main n'est jamais ecrase. Rien n'est enregistre — vous voyez
    ce qui a ete rempli, et vous decidez. */
 var SITE="https://moraformation.pages.dev/formation.html?f=";
+var IMG="https://moraformation.pages.dev/img/";
+// Les formations qui n'existent que dans le bot ont quand meme une
+// couverture : une carte sans image au milieu de neuf cartes illustrees
+// se remarque plus qu'une boutique entierement sobre.
+// L'ordre compte, du plus precis au plus general : « Commandes
+// speciales (Termux/Kali) » porte les trois mots, et prenait la
+// couverture de Kali. Le premier motif qui reconnait gagne.
+var COUV=[["commandes",/commande|script/i],["claude",/claude|abonnement/i],
+          ["termux",/termux/i],["kali",/kali|pentest/i],
+          ["hacking",/hacking|cyber/i],
+          ["fullstack",/full.?stack|d.veloppement web|\bweb\b/i],
+          ["maintenance",/maintenance/i],["trading",/trading|smart.?money/i],
+          ["js",/javascript/i],["boost",/boost|facebook/i]];
+// Une adresse qui n'est pas une image : Facebook laisse un rectangle
+// gris sans rien signaler. On la remplace, elle ne vaut rien.
+function imgOk(v){var u=String(v||"").trim();
+  return /^https:\/\/\S+$/i.test(u) && /\.(jpe?g|png|gif|webp)$/i.test(u.split("?")[0]);}
 var FICHES=[["kali",/kali|pentest/i],["hacking",/hacking|cyber/i],
             ["fullstack",/full.?stack|d.veloppement web|\bweb\b/i],
             ["maintenance",/maintenance/i],["trading",/trading|smart.?money/i],
             ["js",/javascript/i],["boost",/boost|facebook ads/i]];
-E("lienF").innerHTML=S("share",18)+"<span>Remplir les liens du site</span>";
+E("lienF").innerHTML=S("share",18)+"<span>Remplir les liens et les images</span>";
 E("lienF").addEventListener("click",function(){
-  var mis=0, sans=[];
+  var liens=0, images=0, sans=[];
   D.formations.forEach(function(f){
-    if(String(f.lien||"").trim()) return;      // jamais ecraser une saisie
-    var t=String(f.titre||"");
-    for(var i=0;i<FICHES.length;i++){
-      if(FICHES[i][1].test(t)){ f.lien=SITE+FICHES[i][0]; mis++; return }
+    var t=String(f.titre||""), i;
+
+    // Le lien : seulement s'il est vide. Une saisie manuelle se respecte.
+    if(!String(f.lien||"").trim()){
+      for(i=0;i<FICHES.length;i++){
+        if(FICHES[i][1].test(t)){ f.lien=SITE+FICHES[i][0]; liens++; break }
+      }
+      if(i===FICHES.length) sans.push(t||"sans titre");
     }
-    sans.push(t||"sans titre");
+
+    // L'image : on remplace aussi une adresse qui n'en est pas une.
+    // La garder, c'est garder un rectangle gris dans le carrousel.
+    if(!imgOk(f.image)){
+      for(i=0;i<COUV.length;i++){
+        if(COUV[i][1].test(t)){ f.image=IMG+COUV[i][0]+".jpg"; images++; break }
+      }
+    }
   });
-  if(!mis && !sans.length){ toast("Toutes les formations ont deja un lien.",true); return }
-  dessF(); if(mis) marque();
-  toast(mis+" lien"+(mis>1?"s":"")+" rempli"+(mis>1?"s":"")+
+  if(!liens && !images && !sans.length){ toast("Tout est deja en place.",true); return }
+  dessF(); if(liens||images) marque();
+  toast(liens+" lien"+(liens>1?"s":"")+" et "+images+" image"+(images>1?"s":"")+
+        " rempli"+(liens+images>1?"s":"")+
         (sans.length?" — sans fiche sur le site : "+sans.join(", ")+
-         ". Laissez ces champs vides plutot qu'un lien au hasard.":"")+
+         ". Laissez ces liens vides plutot qu'une adresse au hasard.":"")+
         " Verifiez, puis Enregistrer.", true);
 });
 
