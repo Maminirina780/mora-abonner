@@ -2257,6 +2257,25 @@ function messageMoyen(m, d) {
 }
 
 // Message complet tel que le client le recevra
+/* La liste des formations, ecrite depuis le catalogue.
+   ------------------------------------------------------------------
+   Le message d accueil portait la liste tapee a la main. Elle s est
+   arretee a sept pendant que le catalogue en comptait neuf : le client
+   lisait sept produits, en voyait neuf dans le carrousel, et deux
+   formations ne se vendaient plus par ce chemin.
+
+   Ecrire « {formations} » dans le message d accueil suffit desormais.
+   La liste suit le catalogue, pour toujours. */
+const CHIFFRES = ["1\u20e3","2\u20e3","3\u20e3","4\u20e3","5\u20e3","6\u20e3","7\u20e3","8\u20e3","9\u20e3","\ud83d\udd1f"];
+
+function listeFormations(d) {
+  return (d.formations || []).map((f, i) => {
+    const n = CHIFFRES[i] || String(i + 1) + ".";
+    return n + " " + String(f.titre || "").trim() +
+           (String(f.prix || "").trim() ? " \u2013 " + String(f.prix).trim() : "");
+  }).join("\n");
+}
+
 function messageFormation(f, d) {
   const p = String(d.textes.prefixeFormation || "").trim();
   let t = (p ? p + " " : "") + f.titre + "\n" + d.etiquettePrix + " " + f.prix + "\n\n" + f.detail;
@@ -2302,7 +2321,11 @@ function valider(d) {
 
   if (!d.accueil.trim()) return "Le message d'accueil est vide.";
   const astuce = String(d.textes.astuceMessenger || "").trim();
-  const totalAccueil = d.accueil.length + (astuce ? astuce.length + 2 : 0);
+  // On mesure le message tel qu il partira, liste developpee : sinon un
+  // accueil court en apparence depasserait la limite une fois la liste
+  // posee, et Facebook le refuserait sans rien dire.
+  const accueilReel = String(d.accueil).split("{formations}").join(listeFormations(d));
+  const totalAccueil = accueilReel.length + (astuce ? astuce.length + 2 : 0);
   if (totalAccueil > MAX_LG_TEXTE)
     return "Le message d'accueil fait " + totalAccueil + " caracteres, astuce Messenger comprise. Le maximum est " + MAX_LG_TEXTE + ".";
 
@@ -3193,7 +3216,8 @@ function composer(commande, d) {
     // L astuce Messenger est collee sous l accueil. Videz-la dans la console
     // pour ne plus l afficher : le message d accueil revient tel quel.
     const astuce = String(d.textes.astuceMessenger || "").trim();
-    return { text: d.accueil + (astuce ? "\n\n" + astuce : ""), quick_replies: puceMenu(d) };
+    const bienvenue = String(d.accueil).split("{formations}").join(listeFormations(d));
+    return { text: bienvenue + (astuce ? "\n\n" + astuce : ""), quick_replies: puceMenu(d) };
   }
   if (commande === "LANGUE")        return { text: d.langues.invite, quick_replies: puceLangues(d) };
   if (commande === "CATALOGUE")     return carrousel(d);
@@ -3254,8 +3278,19 @@ async function router(env, psid, commande, d, lg, citer) {
         attachment: { type: "template", payload: {
           template_type: "button",
           text: String(d.textes.voirFiche || "👉 Jereo ny formation eto :").trim(),
-          buttons: [{ type: "web_url", url: f.lien,
-                      title: couperBouton(d.boutons.voirFiche || "📖 Fiche") }]
+          /* Trois boutons, le maximum de Facebook.
+             La bulle ne portait que le lien : le client qui voulait
+             acheter devait revenir en arriere chercher le bouton. On
+             pose donc la suite du parcours au meme endroit — voir,
+             acheter, ou regarder autre chose. */
+          buttons: [
+            { type: "web_url", url: f.lien,
+              title: couperBouton(d.boutons.voirFiche || "📖 Fiche") },
+            { type: "postback",
+              title: couperBouton(f.surMesure ? d.boutons.demanderPrix : d.boutons.acheter),
+              payload: f.surMesure ? "AGENT" : "PAIEMENT" },
+            { type: "postback", title: couperBouton(d.boutons.retourMenu), payload: "MENU" }
+          ]
         }}
       });
     }
