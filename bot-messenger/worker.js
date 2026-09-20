@@ -6026,6 +6026,22 @@ select.inp{appearance:none; cursor:pointer; padding-right:42px}
 /* Ancree au viewport VISUEL, pas au viewport de mise en page. Avec
    « bottom:0 », l'ouverture du clavier laissait la barre flotter au milieu
    de l'ecran, du contenu visible en dessous d'elle. */
+/* Le saut rapide. Il se tient juste au-dessus de la barre
+   d enregistrement — jamais par-dessus : un bouton qui en cache un
+   autre est pire que pas de bouton. */
+.saut{position:fixed; right:16px; z-index:60;
+  /* Ancre sur la zone REELLEMENT visible, comme la barre du bas : avec
+     le clavier ouvert, un bouton pose sur la hauteur de page flotte au
+     milieu de l ecran. Puis remonte au-dessus de cette barre. */
+  top:calc(var(--vvtop,0px) + var(--vvh,100dvh));
+  transform:translateY(calc(-100% - 84px));
+  width:46px; height:46px; border-radius:50%; border:1px solid var(--ln);
+  background:var(--sf2); color:var(--tx); display:grid; place-items:center;
+  box-shadow:0 10px 26px -10px #0009; cursor:pointer;
+  transition:transform .16s ease, opacity .16s ease}
+.saut:active{filter:brightness(1.25)}
+.saut svg{width:22px; height:22px}
+@media (prefers-reduced-motion: reduce){ .saut{transition:none} }
 .bar-b{position:fixed; left:0; right:0; top:calc(var(--vvtop,0px) + var(--vvh,100dvh));
   transform:translateY(-100%); z-index:75; background:var(--glass);
   backdrop-filter:saturate(180%) blur(16px); border-top:1px solid var(--ln);
@@ -6808,6 +6824,11 @@ body.menu-open{overflow:hidden; overscroll-behavior:none}
         <p class="hint" style="padding:0 3px">Les changements apparaissent sur l'écran de connexion après <b>Enregistrer</b>, puis un rechargement de la page.</p>
       </section>
     </div>
+
+    <!-- Aller au bas d un ecran, et en revenir. Les pages de reglages
+         sont longues, et sur telephone atteindre le bouton Enregistrer
+         demandait une dizaine de gestes. -->
+    <button type="button" class="saut" id="saut" aria-label="Aller en bas"></button>
 
     <div class="bar-b">
       <div class="bar-in">
@@ -8378,6 +8399,22 @@ function bxOuvrir(psid, silencieux){
      E("bxMin").value = x.j.minutes ? String(x.j.minutes) : "";
      bxFilRendu(silencieux);
      bxTic();
+     /* Amener le fil sous les yeux.
+        Sur telephone, la liste des conversations occupe tout l ecran :
+        on touchait un client, et le fil s ouvrait PLUS BAS, hors de
+        vue. Il fallait descendre a la main a chaque fois. On ne le
+        fait que pour un choix volontaire, jamais sur un
+        rafraichissement automatique — deplacer la page sous quelqu un
+        qui lit est pire que tout. */
+     if(!silencieux){
+       var panneau=E("bxLog");
+       if(panneau) setTimeout(function(){
+         panneau.scrollIntoView({
+           behavior: matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth",
+           block:"start"
+         });
+       },40);
+     }
      document.querySelectorAll(".cv").forEach(function(e){
        if(e.getAttribute("data-psid")===psid) e.setAttribute("aria-current","true");
        else e.removeAttribute("aria-current");
@@ -8438,7 +8475,21 @@ function bxFilRendu(silencieux){
     h+="</div>";
   });
   log.innerHTML=h;
-  if(!silencieux || enBas) log.scrollTop=log.scrollHeight;
+  if(!silencieux || enBas){
+    log.scrollTop=log.scrollHeight;
+    /* Sur telephone, le fil n a pas de hauteur propre : c est la PAGE
+       qui defile. scrollTop ne fait alors rien, et on ouvrait une
+       conversation sur son premier message — il fallait descendre a la
+       main jusqu au dernier, a chaque fois.
+       On regarde donc si le cadre defile vraiment ; sinon on amene la
+       fin du fil dans l ecran. */
+    if(log.scrollHeight - log.clientHeight < 8){
+      var fin=log.lastElementChild;
+      if(fin) setTimeout(function(){
+        fin.scrollIntoView({behavior:silencieux?"auto":"smooth", block:"end"});
+      },30);
+    }
+  }
 }
 
 // « il y a 3 min », « il y a 2 h » — un delai se lit mieux qu'une heure.
@@ -10042,6 +10093,42 @@ document.addEventListener("click",function(ev){
   };
   champ.click();
 });
+
+/* Le saut rapide.
+   ---------------------------------------------------------------
+   Les ecrans de reglages sont longs : atteindre le bouton
+   « Enregistrer » depuis le haut demandait une dizaine de gestes sur
+   telephone. Le bouton descend d un coup, et remonte quand on est
+   deja en bas — une seule cible, qui fait toujours ce qu on attend.
+
+   Il se cache quand la page n est pas assez longue pour defiler :
+   un bouton qui ne sert a rien n a pas a occuper l ecran. */
+(function(){
+  var b=E("saut"); if(!b) return;
+  var enBas=false;
+
+  // La console defile avec la page : il n y a pas d autre conteneur.
+  function zone(){ return document.scrollingElement || document.documentElement; }
+  function etat(){
+    var z=zone();
+    var reste=z.scrollHeight - z.scrollTop - z.clientHeight;
+    var long=z.scrollHeight - z.clientHeight > 220;
+    b.style.display = long ? "grid" : "none";
+    enBas = reste < 80;
+    b.innerHTML=S(enBas?"up":"down",22);
+    b.setAttribute("aria-label", enBas?"Revenir en haut":"Aller en bas");
+  }
+  b.addEventListener("click",function(){
+    var z=zone();
+    var doux=!matchMedia("(prefers-reduced-motion: reduce)").matches;
+    z.scrollTo({top: enBas?0:z.scrollHeight, behavior: doux?"smooth":"auto"});
+  });
+  addEventListener("scroll",etat,{passive:true});
+  addEventListener("resize",etat,{passive:true});
+  // Changer d onglet change la longueur de la page.
+  setInterval(etat,1200);
+  etat();
+})();
 
 E("addF").innerHTML=S("plus",18)+"<span>Ajouter une formation</span>";
 E("addF").addEventListener("click",function(){
