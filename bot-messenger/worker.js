@@ -3014,7 +3014,17 @@ async function traiter(corps, env) {
             // Celle de ce message, ou a defaut celle des dix dernieres minutes.
             const url = urlImage || await lireVal(env, "img:" + psid);
             const image = url ? await chargerImage(url) : null;
-            const rep = await iaRepondre(env, d, q, memoire, image, lg);
+            /* De quelle formation parle-t-on ?
+               ------------------------------------------------------
+               Le bot retient la derniere fiche consultee — c est deja
+               ce qui permet d ouvrir le bon acces apres un paiement.
+               L assistant, lui, ne la recevait pas : apres un clic sur
+               « Mividy » puis l envoi d une reference, il redemandait
+               laquelle, alors que le client venait de la lire. */
+            const vueId = await lireVal(env, "vue:" + psid);
+            const vueF = vueId ? d.formations.find(x => String(x.id) === String(vueId)) : null;
+            const rep = await iaRepondre(env, d, q, memoire, image, lg,
+                                         vueF ? vueF.titre : "");
 
             // La raison exacte d un echec est visible dans le Simulateur ;
             // le client, lui, ne doit jamais voir une erreur technique.
@@ -3842,7 +3852,7 @@ function iaCatalogue(d) {
   return t;
 }
 
-function iaConsignes(d, lg) {
+function iaConsignes(d, lg, enCours) {
   return [
     "Tu es l assistant de la page Facebook « " + d.marque.nom + " », qui vend des formations en ligne a Madagascar.",
     "",
@@ -3884,6 +3894,11 @@ function iaConsignes(d, lg) {
     "CE QUE TU PEUX FAIRE LIBREMENT :",
     "Expliquer et enseigner. Le client peut poser une question technique sur les sujets des formations (Termux, Kali Linux, developpement web, maintenance informatique, reseaux, cyber cafe, Windows Server). Reponds utilement et pedagogiquement, comme un formateur patient. C est la raison d etre de cet assistant.",
     "",
+    enCours
+      ? "\nFORMATION EN COURS : le client vient de consulter « " + enCours + " ». " +
+        "Sauf s il en nomme une autre, c est de celle-la qu il parle — surtout apres un clic sur " +
+        "« acheter », l envoi d une reference ou d une capture de paiement. NE REDEMANDE PAS laquelle."
+      : "",
     iaCatalogue(d),
     d.ia.consignes ? "\nCONSIGNES SUPPLEMENTAIRES DU PROPRIETAIRE :\n" + d.ia.consignes : ""
   ].join("\n");
@@ -3968,7 +3983,7 @@ function expliquerGemini(err, modele) {
 // modeles actuels refusent le reglage par un 400, ce qui obligeait a un
 // second appel a chaque message — deux fois le quota consomme pour rien.
 // Un seul appel, un plafond confortable : c'est plus simple et moins cher.
-function corpsIa(d, message, memoire, image, lg) {
+function corpsIa(d, message, memoire, image, lg, enCours) {
   const passe = (memoire || []).map(m => ({
     role: m.r === "u" ? "user" : "model",
     parts: [{ text: String(m.t || "") }]
@@ -3976,7 +3991,7 @@ function corpsIa(d, message, memoire, image, lg) {
   const dernier = [{ text: String(message).slice(0, 1500) }];
   if (image) dernier.unshift({ inline_data: { mime_type: image.mime, data: image.data } });
   return {
-    system_instruction: { parts: [{ text: iaConsignes(d, lg) }] },
+    system_instruction: { parts: [{ text: iaConsignes(d, lg, enCours) }] },
     contents: passe.concat([{ role: "user", parts: dernier }]),
     generationConfig: {
       temperature: 0.4,
@@ -4012,13 +4027,13 @@ async function appelGemini(url, corps) {
 
 // UN moteur Gemini, pour UNE cle donnee.
 // Renvoie { texte } si tout va bien, sinon { erreur } en clair.
-async function gemini(env, d, message, cle, memoire, image, lg) {
+async function gemini(env, d, message, cle, memoire, image, lg, enCours) {
   const url = "https://generativelanguage.googleapis.com/v1beta/models/" +
               encodeURIComponent(d.ia.modele) + ":generateContent?key=" +
               encodeURIComponent(cle);
   try {
     // Un seul appel par message : le quota gratuit se compte a l'appel.
-    const corps = corpsIa(d, message, memoire, image, lg);
+    const corps = corpsIa(d, message, memoire, image, lg, enCours);
     // Ce modele a deja refuse le reglage une fois ? On ne le represente
     // plus : sinon chaque message couterait DEUX appels de quota.
     if (await pose(env, "sans-reflexion:" + d.ia.modele))
@@ -4094,7 +4109,7 @@ function texteWorkersAi(r) {
 // Le moteur de secours : l IA de Cloudflare, dans la maison du Worker.
 // Aucune cle a creer, aucun compte, et un quota totalement independant de
 // celui de Google. C est tout son interet : si Google tombe, il reste debout.
-async function secoursCloudflare(env, d, message, memoire, image, lg) {
+async function secoursCloudflare(env, d, message, memoire, image, lg, enCours) {
   if (!env.AI)
     return { erreur: "Le branchement « AI » n'existe pas sur le Worker. " +
                      "Cloudflare → Settings → Bindings → Add → Workers AI, nom de variable : AI." };
@@ -4107,7 +4122,7 @@ async function secoursCloudflare(env, d, message, memoire, image, lg) {
   }));
   try {
     const r = await env.AI.run(d.ia.modeleSecours, {
-      messages: [{ role: "system", content: iaConsignes(d, lg) }].concat(
+      messages: [{ role: "system", content: iaConsignes(d, lg, enCours) }].concat(
         passe,
         [{ role: "user", content: String(message).slice(0, 1500) }]
       ),
@@ -4133,14 +4148,14 @@ async function secoursCloudflare(env, d, message, memoire, image, lg) {
 // La chaine complete, dans l ordre. On garde le PREMIER moteur qui repond.
 // Si tous echouent, on renvoie toutes les raisons : elles s affichent dans
 // le Simulateur, jamais chez le client.
-async function iaRepondre(env, d, message, memoire, image, lg) {
+async function iaRepondre(env, d, message, memoire, image, lg, enCours) {
   const moteurs = [];
   if (env.GEMINI_API_KEY)
-    moteurs.push({ nom: "Gemini (clé n°1)", lancer: () => gemini(env, d, message, env.GEMINI_API_KEY, memoire, image, lg) });
+    moteurs.push({ nom: "Gemini (clé n°1)", lancer: () => gemini(env, d, message, env.GEMINI_API_KEY, memoire, image, lg, enCours) });
   if (env.GEMINI_API_KEY_2)
-    moteurs.push({ nom: "Gemini (clé n°2)", lancer: () => gemini(env, d, message, env.GEMINI_API_KEY_2, memoire, image, lg) });
+    moteurs.push({ nom: "Gemini (clé n°2)", lancer: () => gemini(env, d, message, env.GEMINI_API_KEY_2, memoire, image, lg, enCours) });
   if (d.ia.secours)
-    moteurs.push({ nom: "Cloudflare Workers AI", lancer: () => secoursCloudflare(env, d, message, memoire, image, lg) });
+    moteurs.push({ nom: "Cloudflare Workers AI", lancer: () => secoursCloudflare(env, d, message, memoire, image, lg, enCours) });
 
   if (!moteurs.length)
     return { erreur: "Aucun moteur disponible : ni cle Gemini, ni moteur de secours." };
@@ -10069,7 +10084,24 @@ E("syncF").addEventListener("click",function(){
         if(!f.slug || deja(f.slug,f.titre)) return;
         if(D.formations.length>=mx){ refuses.push(f.titre); return }
         var n=1; while(D.formations.some(function(x){return String(x.id)===String(n)}))n++;
-        D.formations.push({id:String(n),bouton:f.bouton,titre:f.titre,prix:f.prix,
+        /* Le libelle continue la numerotation en place.
+           Les sept formations existantes s appellent « 1 Termux »,
+           « 2 Kali Linux »… et les nouvelles arrivaient sans numero :
+           le message d accueil annonce « valio amin ny 8 », et le
+           bouton ne portait pas ce 8. Le client ne faisait pas le lien. */
+        var CH=["1\u20e3","2\u20e3","3\u20e3","4\u20e3","5\u20e3","6\u20e3",
+                "7\u20e3","8\u20e3","9\u20e3","\ud83d\udd1f"];
+        var numerotees=D.formations.filter(function(x){
+          return /^[\u0031-\u0039\u20e3\ud83d\udd1f\s]/.test(String(x.bouton||""));
+        }).length;
+        var libelle=f.bouton;
+        if(numerotees>=Math.max(1,D.formations.length-1) && CH[n-1]){
+          // On retire l icone du site : deux symboles avant le titre
+          // tiennent mal dans les vingt caracteres de Facebook.
+          var sansIcone=String(f.bouton||"").replace(/^\S+\s+/,"");
+          libelle=CH[n-1]+" "+sansIcone;
+        }
+        D.formations.push({id:String(n),bouton:libelle,titre:f.titre,prix:f.prix,
           image:"",motscles:f.motscles,lien:f.lien,driveId:"",
           surMesure:!f.prix,avecNote:true,detail:f.detail});
         ajoutes.push(f.titre);
