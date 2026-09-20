@@ -13,25 +13,20 @@ jobs:
   lire:
     runs-on: ubuntu-latest
     steps:
-      - name: Ce que papi.mg publie
+      - name: La documentation technique
         run: |
+          # Docusaurus rend le texte cote serveur : on peut le lire.
           for u in \
-            "https://papi.mg" \
-            "https://papi.mg/docs" \
-            "https://docs.papi.mg" \
-            "https://api.papi.mg" \
-            "https://www.papi.mg/documentation" ; do
-            echo "=================== $u"
-            code=$(curl -sL --max-time 20 -o page.html -w '%{http_code}' "$u" || echo "000")
-            echo "HTTP $code / $(wc -c < page.html 2>/dev/null || echo 0) octets"
+            "https://docs.papi.mg/fr/docs/overview" \
+            "https://docs.papi.mg/fr/docs/quickstart" \
+            "https://docs.papi.mg/fr/docs/developper-guide/integration-guide" \
+            "https://docs.papi.mg/fr/docs/developper-guide/securing-notifications" ; do
+            echo "=========================================== $u"
+            code=$(curl -sL --max-time 25 -o p.html -w '%{http_code}' "$u" || echo 000)
+            echo "HTTP $code"
             [ "$code" = "200" ] || continue
-
-            # Le titre, puis le texte, debarrasse des balises.
-            grep -o '<title>[^<]*' page.html | head -1
             sed -e 's/<script[^>]*>.*<\/script>//g' -e 's/<style[^>]*>.*<\/style>//g' \
-                -e 's/<[^>]*>/ /g' page.html \
-              | tr -s ' \n' ' \n' | grep -v '^\s*$' | head -60
-
-            echo "--- adresses d API citees ---"
-            grep -oE 'https?://[a-zA-Z0-9._-]*papi\.mg[^"'"'"' <)]*' page.html | sort -u | head -20
+                -e 's/<[^>]*>/\n/g' p.html \
+              | sed -e 's/&quot;/"/g' -e "s/&#39;/'/g" -e 's/&amp;/\&/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' \
+              | grep -v '^[[:space:]]*$' | head -120
           done
