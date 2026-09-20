@@ -2268,6 +2268,17 @@ function messageMoyen(m, d) {
    La liste suit le catalogue, pour toujours. */
 const CHIFFRES = ["1\u20e3","2\u20e3","3\u20e3","4\u20e3","5\u20e3","6\u20e3","7\u20e3","8\u20e3","9\u20e3","\ud83d\udd1f"];
 
+/* « Valio amin'ny 1, 2, 3 na 4 » : une enumeration ecrite a la main se
+   fige exactement comme la liste. « {numeros} » la remplace. */
+function numerosFormations(d) {
+  const n = (d.formations || []).length;
+  if (n === 0) return "";
+  if (n === 1) return "1";
+  const tous = [];
+  for (let i = 1; i <= n; i++) tous.push(String(i));
+  return tous.slice(0, -1).join(", ") + " na " + tous[tous.length - 1];
+}
+
 function listeFormations(d) {
   return (d.formations || []).map((f, i) => {
     const n = CHIFFRES[i] || String(i + 1) + ".";
@@ -2324,7 +2335,9 @@ function valider(d) {
   // On mesure le message tel qu il partira, liste developpee : sinon un
   // accueil court en apparence depasserait la limite une fois la liste
   // posee, et Facebook le refuserait sans rien dire.
-  const accueilReel = String(d.accueil).split("{formations}").join(listeFormations(d));
+  const accueilReel = String(d.accueil)
+    .split("{formations}").join(listeFormations(d))
+    .split("{numeros}").join(numerosFormations(d));
   const totalAccueil = accueilReel.length + (astuce ? astuce.length + 2 : 0);
   if (totalAccueil > MAX_LG_TEXTE)
     return "Le message d'accueil fait " + totalAccueil + " caracteres, astuce Messenger comprise. Le maximum est " + MAX_LG_TEXTE + ".";
@@ -3216,7 +3229,9 @@ function composer(commande, d) {
     // L astuce Messenger est collee sous l accueil. Videz-la dans la console
     // pour ne plus l afficher : le message d accueil revient tel quel.
     const astuce = String(d.textes.astuceMessenger || "").trim();
-    const bienvenue = String(d.accueil).split("{formations}").join(listeFormations(d));
+    const bienvenue = String(d.accueil)
+      .split("{formations}").join(listeFormations(d))
+      .split("{numeros}").join(numerosFormations(d));
     return { text: bienvenue + (astuce ? "\n\n" + astuce : ""), quick_replies: puceMenu(d) };
   }
   if (commande === "LANGUE")        return { text: d.langues.invite, quick_replies: puceLangues(d) };
