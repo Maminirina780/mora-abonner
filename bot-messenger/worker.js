@@ -539,6 +539,12 @@ Misaotra betsaka! Vantany vao voamarina izany dia ho tonga ao anaty Drive-nao ny
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    /* L adresse publique du Worker. Papi doit pouvoir la rappeler, et
+       le routeur — appele loin d ici — n a pas la requete sous la main.
+       On la retient a chaque passage : elle ne change pas d un appel a
+       l autre, et elle vient de la requete plutot que d une constante
+       qu il faudrait penser a mettre a jour. */
+    origineWorker = url.origin;
     const chemin = url.pathname;
 
     /* --- QUI PARLE ? ---------------------------------------------------
@@ -1346,6 +1352,85 @@ export default {
 
     //     Sert la piece. Publique par necessite — Facebook doit pouvoir la
     //     telecharger — mais l'identifiant est aleatoire et elle expire.
+    /* --- Papi : le client revient du paiement ------------------------
+       Deux pages simples. Elles ne DECIDENT rien : le statut arrive par
+       la notification signee, pas par le navigateur du client, qui peut
+       ouvrir « merci » sans avoir paye. */
+    if (chemin === "/papi/merci" || chemin === "/papi/echec") {
+      const ok = chemin.endsWith("merci");
+      return new Response(
+        "<!doctype html><html lang=mg><meta charset=utf-8>" +
+        "<meta name=viewport content='width=device-width,initial-scale=1'>" +
+        "<title>" + (ok ? "Misaotra" : "Tsy vita") + "</title>" +
+        "<style>body{margin:0;min-height:100svh;display:grid;place-items:center;" +
+        "background:#0b1220;color:#e8eefc;font:16px/1.6 system-ui,sans-serif;padding:24px}" +
+        "div{max-width:30rem;text-align:center}h1{font-size:22px;margin:0 0 12px}" +
+        "p{color:#94a3b8;margin:0}</style><div><h1>" +
+        (ok ? "✅ Misaotra tompoko !" : "⚠️ Tsy vita ny fandoavana") + "</h1><p>" +
+        (ok ? "Voaray ny fandoavanao. Miverena any amin'ny Messenger : ho tonga any ny tohiny."
+            : "Azonao atao ny manandrana indray, na mifandray aminay ao amin'ny Messenger.") +
+        "</p></div></html>",
+        { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
+    }
+
+    /* --- Papi : la notification de paiement --------------------------
+       C est ici que l argent se decide, donc c est ici qu on doute de
+       tout. Trois controles avant la moindre action, dans cet ordre :
+       la signature, puis la reference, puis le jeton. */
+    if (chemin === "/papi/notification" && request.method === "POST") {
+      // Le corps BRUT : re-serialiser changerait la signature.
+      const brut = await request.text();
+
+      if (!await papiSignatureValide(env, request.headers.get("X-Papi-Signature"), brut)) {
+        await noterIncident(env, "papi_signature", { message: "signature refusee" });
+        // 200 quand meme : un 4xx ferait reessayer Papi indefiniment
+        // pour une notification qui ne sera jamais valable.
+        return json({ recu: true }, 200);
+      }
+
+      let n;
+      try { n = JSON.parse(brut); } catch (e) { return json({ recu: true }, 200); }
+
+      const reference = String(n.merchantPaymentReference || n.reference || "");
+      const attendu = reference ? await lireVal(env, "papi:" + reference) : null;
+      if (!attendu) return json({ recu: true }, 200);
+
+      let a;
+      try { a = JSON.parse(attendu); } catch (e) { return json({ recu: true }, 200); }
+
+      // Le jeton rendu a la creation : un controle de plus, gratuit.
+      if (a.jeton && n.notificationToken && !memeSecret(String(n.notificationToken), a.jeton)) {
+        await noterIncident(env, "papi_jeton", { message: "jeton different pour " + reference });
+        return json({ recu: true }, 200);
+      }
+
+      // Le montant : on ne livre pas une formation a 200 000 Ar pour
+      // 1 000 Ar payes. Le montant vient de NOTRE demande, jamais du
+      // message recu.
+      const paye = Number(n.amount);
+      if (Number.isFinite(paye) && paye + 0.5 < a.montant) {
+        await noterIncident(env, "papi_montant",
+          { message: "attendu " + a.montant + ", recu " + paye + " pour " + reference });
+        return json({ recu: true }, 200);
+      }
+
+      const statut = String(n.paymentStatus || "").toUpperCase();
+      const d = await charger(env);
+
+      if (statut === "SUCCESS" || statut === "SUCCEEDED" || statut === "PAID") {
+        // Rejeu : Papi reessaie en cas de reponse lente. Livrer deux
+        // fois n est pas grave, mais ecrire deux fois coute du quota.
+        if (!await pose(env, "papi_fait:" + reference)) {
+          await poser(env, "papi_fait:" + reference, PAPI_TTL);
+          await poserVal(env, "vue:" + a.psid, String(a.formation), 3 * 86400);
+          await papiApresPaiement(env, d, a);
+        }
+      } else if (statut) {
+        await papiEchec(env, d, a);
+      }
+      return json({ recu: true }, 200);
+    }
+
     /* --- Les photos televersees depuis la console -------------------
        Le proprietaire doit pouvoir mettre SA photo sur une carte sans
        passer par un hebergeur : trouver une adresse d image sur un
@@ -3287,6 +3372,32 @@ async function router(env, psid, commande, d, lg, citer) {
     // Marque la fiche comme lue : elle ne sera pas recitee pendant 6 h.
     await poser(env, "vu:" + psid + ":" + commande.slice(1), VU_TTL);
   }
+  /* « Mividy » : un lien de paiement plutot qu un numero a recopier.
+     ------------------------------------------------------------------
+     On ne le propose que si TOUT est reuni : Papi configure, une
+     formation en cours, et un prix qui ne laisse aucun doute. Sinon le
+     client recoit la liste des moyens comme avant — c est le chemin qui
+     a toujours fonctionne, et il ne disparait pas. */
+  if (commande === "PAIEMENT" && papiActif(env)) {
+    const vueId = await lireVal(env, "vue:" + psid);
+    const f = vueId ? d.formations.find(x => String(x.id) === String(vueId)) : null;
+    if (f && !f.surMesure && prixEnNombre(f.prix)) {
+      const lien = origineWorker ? await papiCreerLien(env, d, psid, f, origineWorker) : null;
+      if (lien) {
+        await envoyer(env, psid, { attachment: { type: "template", payload: {
+          template_type: "button",
+          text: "💳 " + f.titre + "\n💰 " + f.prix +
+                "\n\nTsindrio eto dia misafidy MVola, Orange na Airtel ianao. " +
+                "Ho tonga hoazy ny tohiny rehefa vita.",
+          buttons: [{ type: "web_url", url: lien.lien, title: couperBouton("💳 Mandoa") }]
+        }}}, citer);
+        return;
+      }
+      // La creation a echoue : on ne dit rien au client, il recoit la
+      // liste des moyens. Une panne de Papi ne doit pas bloquer une vente.
+    }
+  }
+
   const r = await envoyerHumain(env, psid, m, d, lg, false, citer);
 
   /* La fiche du site, en bouton.
@@ -3409,6 +3520,193 @@ function carrousel(d) {
   };
 }
 
+
+
+/* =====================================================================
+   PAPI — ENCAISSEMENT AUTOMATIQUE
+   =====================================================================
+   Jusqu ici : le client recopiait un numero, payait, envoyait une
+   capture, et quelqu un verifiait a la main. Une capture se falsifie en
+   trente secondes, et personne ne verifie a trois heures du matin.
+
+   Avec Papi, le client recoit un lien, paie, et Papi previent le bot.
+   Tout tient alors a UNE chose : la preuve que la notification vient
+   bien de Papi. Leur documentation le dit sans detour — n importe qui
+   peut envoyer « paymentStatus: SUCCESS » a une adresse publique.
+
+   Le paiement manuel reste en place. Un client sans smartphone, une
+   panne chez Papi : l ancien chemin doit rester ouvert.
+   ================================================================== */
+
+let origineWorker = "";
+
+const PAPI_API = "https://app.papi.mg/engine/api/payment-links";
+const PAPI_TOLERANCE = 300;   // 5 min : au-dela, une notification est rejouee
+const PAPI_TTL = 3 * 86400;   // ce qu on retient d un paiement en cours
+
+function papiActif(env) {
+  return !!(env.PAPI_CLE_API && env.PAPI_SECRET_SIGNATURE);
+}
+
+/**
+ * Le prix d une formation, en nombre.
+ *
+ * Les prix sont ecrits pour etre LUS : « 100.000 Ar », « 10.000 a
+ * 40.000 Ar », « Partage 30.000 Ar | Personnel 120.000 Ar ». Seul le
+ * premier cas peut etre encaisse automatiquement — on ne devine pas le
+ * montant d une fourchette, et facturer le mauvais chiffre serait pire
+ * que de ne rien facturer.
+ *
+ * Renvoie null des qu il y a le moindre doute : le client repart alors
+ * sur le paiement manuel, qui fonctionne.
+ */
+function prixEnNombre(brut) {
+  const t = String(brut == null ? "" : brut);
+  // Deux montants ou plus, ou une fourchette : on ne tranche pas.
+  const montants = t.match(/\d[\d\s.,]*/g) || [];
+  if (montants.length !== 1) return null;
+  if (/\ba\b|\bà\b|\bhatramin|\bjusqu|\||\bou\b/i.test(t)) return null;
+
+  // « 100.000 » et « 100 000 » designent cent mille, pas cent.
+  const n = Number(montants[0].replace(/[\s.,]/g, ""));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Une reference qui dit A QUI et POUR QUOI, sans rien reveler. */
+function papiReference(psid, formationId) {
+  return "MORAB-" + String(psid).slice(-10) + "-" + formationId + "-" + Date.now().toString(36);
+}
+
+/**
+ * Cree le lien de paiement. Renvoie null si quoi que ce soit manque :
+ * l appelant retombe alors sur le paiement manuel.
+ */
+async function papiCreerLien(env, d, psid, f, origine) {
+  const montant = prixEnNombre(f.prix);
+  if (!papiActif(env) || !montant) return null;
+
+  const reference = papiReference(psid, f.id);
+  const corps = {
+    amount: montant,
+    reference: reference,
+    description: String(f.titre || "Formation").slice(0, 120),
+    clientName: "Client Messenger",
+    successUrl: origine + "/papi/merci",
+    failureUrl: origine + "/papi/echec",
+    notificationUrl: origine + "/papi/notification",
+    validDuration: 60            // minutes : un lien qui traine est un lien qui fuit
+  };
+
+  let j;
+  try {
+    const r = await fetch(PAPI_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Token": env.PAPI_CLE_API },
+      body: JSON.stringify(corps)
+    });
+    j = await r.json();
+    if (!r.ok) {
+      await noterIncident(env, "papi_creation", { message: "HTTP " + r.status + " " + JSON.stringify(j).slice(0, 180) });
+      return null;
+    }
+  } catch (e) {
+    await noterIncident(env, "papi_creation", e);
+    return null;
+  }
+
+  const data = (j && j.data) || {};
+  if (!data.paymentLink) return null;
+
+  /* On retient CE QU ON A DEMANDE. A l arrivee de la notification, on
+     comparera : un montant ou une formation qui ne correspondent pas
+     signalent une notification qui n est pas la notre. */
+  await poserVal(env, "papi:" + reference, JSON.stringify({
+    psid: psid,
+    formation: f.id,
+    titre: f.titre,
+    montant: montant,
+    jeton: data.notificationToken || "",
+    cree: Date.now()
+  }), PAPI_TTL);
+
+  return { lien: data.paymentLink, reference: reference, montant: montant };
+}
+
+/**
+ * La signature d une notification.
+ *
+ * Le message signe est « horodatage + point + corps BRUT ». Le corps
+ * brut, pas un corps reconstruit : re-serialiser un JSON change les
+ * espaces et l ordre des cles, et la signature ne correspondrait plus.
+ */
+async function papiSignatureValide(env, entete, corpsBrut) {
+  const secret = env.PAPI_SECRET_SIGNATURE;
+  if (!secret || !entete) return false;
+
+  const parts = {};
+  for (const bout of String(entete).split(",")) {
+    const i = bout.indexOf("=");
+    if (i > 0) parts[bout.slice(0, i).trim()] = bout.slice(i + 1).trim();
+  }
+  const t = Number(parts.t), v1 = parts.v1;
+  if (!t || !v1) return false;
+
+  // Rejeu : une notification interceptee ne doit pas pouvoir etre
+  // renvoyee une heure plus tard. L horodatage est DANS le message
+  // signe, donc il ne peut pas etre change sans casser la signature.
+  if (Math.abs(Date.now() / 1000 - t) > PAPI_TOLERANCE) return false;
+
+  const cle = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", cle,
+    new TextEncoder().encode(t + "." + corpsBrut));
+
+  let hex = "";
+  for (const o of new Uint8Array(sig)) hex += o.toString(16).padStart(2, "0");
+  return memeSecret(hex, String(v1).toLowerCase());
+}
+
+
+/* Ce qui se passe une fois le paiement CONFIRME.
+   ------------------------------------------------------------------
+   Le client n a plus rien a prouver : ni capture, ni reference. Il ne
+   reste qu a savoir ou envoyer l acces. On lui demande son adresse, et
+   le proprietaire est prevenu — c est lui qui partage le dossier, comme
+   avant : un paiement verifie n est pas une autorisation a ouvrir
+   automatiquement un Drive. */
+async function papiApresPaiement(env, d, a) {
+  const lg = await langueDe(env, d, a.psid, "");
+  const texte =
+    "✅ Voaray ny fandoavanao, misaotra tompoko !\n\n" +
+    "🎓 " + a.titre + "\n" +
+    "💰 " + a.montant.toLocaleString("fr-FR").replace(/\u202f|\u00a0/g, ".") + " Ar\n\n" +
+    "📧 Alefaso eto ny adiresy email-nao mba handefasana ny lien Google Drive.";
+
+  await envoyerHumain(env, a.psid, { text: texte, quick_replies: puceRetour(d) }, d, lg, false, null);
+
+  // Le proprietaire est prevenu, avec de quoi agir tout de suite.
+  if (d.adminPsid) {
+    await envoyer(env, d.adminPsid, { text:
+      "💳 Fandoavana voamarina (Papi)\n\n" +
+      "🎓 " + a.titre + "\n" +
+      "💰 " + a.montant + " Ar\n" +
+      "👤 " + a.psid + "\n\n" +
+      "Miandry ny email-ny izy." });
+  }
+
+  await convAjouter(env, a.psid, null, { paye: true, payeRef: a.reference || "", payeLe: Date.now() });
+}
+
+/* Un paiement qui echoue ne doit ni livrer, ni laisser le client sans
+   reponse devant un ecran qui dit seulement « erreur ». */
+async function papiEchec(env, d, a) {
+  const lg = await langueDe(env, d, a.psid, "");
+  await envoyerHumain(env, a.psid, {
+    text: "⚠️ Tsy tanteraka ny fandoavana ho an'ny « " + a.titre + " ».\n\n" +
+          "Azonao atao ny manandrana indray, na misafidy fomba hafa. Eto izahay raha misy olana.",
+    quick_replies: puceMoyens(d)
+  }, d, lg, false, null);
+}
 
 /* --- Assistant IA (Gemini) ---------------------------------- */
 
