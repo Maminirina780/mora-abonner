@@ -31,6 +31,9 @@ jobs:
       - name: La console s executera-t-elle ?
         run: node bot-messenger/verif/console.mjs
 
+      - name: Les controles qui protegent l argent
+        run: node bot-messenger/verif/papi.mjs
+
       - name: Vérifier la syntaxe du Worker
         run: node --check bot-messenger/worker.js
 
