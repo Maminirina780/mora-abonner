@@ -1,0 +1,37 @@
+# Lire la documentation publique de papi.mg.
+#
+# La session de developpement n a pas d acces reseau vers ce domaine :
+# sans ce relais, je devrais deviner le fonctionnement de l API, et une
+# integration de PAIEMENT devinee est exactement ce qu il ne faut pas
+# faire.
+name: Lire papi.mg
+
+on:
+  workflow_dispatch:
+
+jobs:
+  lire:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ce que papi.mg publie
+        run: |
+          for u in \
+            "https://papi.mg" \
+            "https://papi.mg/docs" \
+            "https://docs.papi.mg" \
+            "https://api.papi.mg" \
+            "https://www.papi.mg/documentation" ; do
+            echo "=================== $u"
+            code=$(curl -sL --max-time 20 -o page.html -w '%{http_code}' "$u" || echo "000")
+            echo "HTTP $code / $(wc -c < page.html 2>/dev/null || echo 0) octets"
+            [ "$code" = "200" ] || continue
+
+            # Le titre, puis le texte, debarrasse des balises.
+            grep -o '<title>[^<]*' page.html | head -1
+            sed -e 's/<script[^>]*>.*<\/script>//g' -e 's/<style[^>]*>.*<\/style>//g' \
+                -e 's/<[^>]*>/ /g' page.html \
+              | tr -s ' \n' ' \n' | grep -v '^\s*$' | head -60
+
+            echo "--- adresses d API citees ---"
+            grep -oE 'https?://[a-zA-Z0-9._-]*papi\.mg[^"'"'"' <)]*' page.html | sort -u | head -20
+          done
