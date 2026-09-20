@@ -13,20 +13,25 @@ jobs:
   lire:
     runs-on: ubuntu-latest
     steps:
-      - name: La documentation technique
+      - name: L API de creation de paiement
         run: |
-          # Docusaurus rend le texte cote serveur : on peut le lire.
+          # Sans pipe vers head : la troncature coupait la page en plein
+          # milieu du corps de requete, justement ce qu on cherche.
           for u in \
-            "https://docs.papi.mg/fr/docs/overview" \
             "https://docs.papi.mg/fr/docs/quickstart" \
-            "https://docs.papi.mg/fr/docs/developper-guide/integration-guide" \
-            "https://docs.papi.mg/fr/docs/developper-guide/securing-notifications" ; do
-            echo "=========================================== $u"
+            "https://docs.papi.mg/fr/docs/api" \
+            "https://docs.papi.mg/fr/docs/developper-guide/integration-guide" ; do
+            echo "########################################### $u"
             code=$(curl -sL --max-time 25 -o p.html -w '%{http_code}' "$u" || echo 000)
             echo "HTTP $code"
             [ "$code" = "200" ] || continue
             sed -e 's/<script[^>]*>.*<\/script>//g' -e 's/<style[^>]*>.*<\/style>//g' \
                 -e 's/<[^>]*>/\n/g' p.html \
-              | sed -e 's/&quot;/"/g' -e "s/&#39;/'/g" -e 's/&amp;/\&/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' \
-              | grep -v '^[[:space:]]*$' | head -120
+              | sed -e 's/&quot;/"/g' -e "s/&#x27;/'/g" -e "s/&#39;/'/g" \
+                    -e 's/&amp;/\&/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' \
+              | grep -v '^[[:space:]]*$' > texte.txt
+            echo "--- $(wc -l < texte.txt) lignes ---"
+            # On ne garde que ce qui sert : adresses, methodes, champs JSON.
+            grep -nE 'POST|GET|/v[0-9]|api\.papi|paymentLink|merchantPaymentReference|notificationUrl|successUrl|failureUrl|amount|currency|Authorization|x-api-key|notificationToken|paymentStatus|Bearer' texte.txt \
+              | head -80
           done
