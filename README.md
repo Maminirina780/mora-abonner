@@ -9,6 +9,7 @@ Site multi-pages de présentation du catalogue de formations **Mora Abonner**.
 
 - **index.html** — accueil : présentation Mora Abonner, catalogue filtrable, calculateur d'espace, livraison, FAQ
 - **formation.html?f=ID** — page détail par formation : résumé, langue, ce qu'on apprend, pour qui, prérequis, arborescence complète fichier par fichier
+- **chiffrement.html** — Mora Chiffrement : chiffrer/déchiffrer un message ou une image avec un mot de passe (AES-256-GCM, tout se passe dans le navigateur)
 
 ## Fonctionnalités
 

@@ -1,0 +1,1756 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Mora Chiffrement</title>
+  <meta name="description" content="Chiffrez et déchiffrez vos messages et vos images avec un mot de passe, directement sur votre appareil.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Schibsted+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #E7EAF2;
+      --surface: #FFFFFF;
+      --field: #F3F5FA;
+      --ink: #15192B;
+      --muted: #545C76;
+      --line: #CBD1DE;
+      --accent: #F2B705;
+      --accent-hover: #DDA600;
+      --accent-strong: #8A6100;
+      --on-accent: #15192B;
+      --vault: #1A2140;
+      --vault-2: #232B52;
+      --vault-ink: #EEF1FA;
+      --vault-muted: #A9B1CF;
+      --vault-cipher: #F7CC4A;
+      --ok: #11795A;
+      --warn: #9A6400;
+      --err: #B3261E;
+      --err-bg: #FCECEA;
+
+      --sans: "Schibsted Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+
+      box-sizing: border-box;
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --bg: #11162D;
+        --surface: #1A2142;
+        --field: #222A50;
+        --ink: #EEF1FA;
+        --muted: #A9B0CC;
+        --line: #343E6C;
+        --accent: #F2B705;
+        --accent-hover: #FFC929;
+        --accent-strong: #F2B705;
+        --on-accent: #15192B;
+        --vault: #0D1230;
+        --vault-2: #182046;
+        --vault-ink: #EEF1FA;
+        --vault-muted: #949CC0;
+        --vault-cipher: #F7CC4A;
+        --ok: #4BD69B;
+        --warn: #F2B705;
+        --err: #FF8A80;
+        --err-bg: #3A1F33;
+      }
+    }
+
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #11162D;
+      --surface: #1A2142;
+      --field: #222A50;
+      --ink: #EEF1FA;
+      --muted: #A9B0CC;
+      --line: #343E6C;
+      --accent: #F2B705;
+      --accent-hover: #FFC929;
+      --accent-strong: #F2B705;
+      --on-accent: #15192B;
+      --vault: #0D1230;
+      --vault-2: #182046;
+      --vault-ink: #EEF1FA;
+      --vault-muted: #949CC0;
+      --vault-cipher: #F7CC4A;
+      --ok: #4BD69B;
+      --warn: #F2B705;
+      --err: #FF8A80;
+      --err-bg: #3A1F33;
+    }
+
+    *, *::before, *::after { box-sizing: inherit; }
+    [hidden] { display: none !important; }
+
+    html {
+      scroll-padding-top: env(safe-area-inset-top, 0px);
+      background: var(--bg);
+      -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+    }
+
+    .app {
+      max-width: 620px;
+      margin: 0 auto;
+      padding: 28px 16px 40px;
+    }
+
+    /* En-tête */
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin: 4px 4px 20px;
+    }
+
+    .mark { flex: none; width: 46px; height: 54px; color: var(--ink); }
+
+    .mark .shackle {
+      transform-box: fill-box;
+      transform-origin: center bottom;
+      transition: transform 420ms cubic-bezier(.34, 1.56, .64, 1);
+    }
+
+    .brand.is-open .mark .shackle { transform: translateY(-7px); }
+
+    .brand h1 {
+      margin: 0;
+      font-size: clamp(30px, 8.4vw, 42px);
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -0.025em;
+    }
+
+    .tagline {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.45;
+      max-width: 44ch;
+    }
+
+    /* Onglets Texte / Image */
+    .kinds {
+      display: flex;
+      gap: 22px;
+      margin: 0 8px 10px;
+    }
+
+    .kind {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 46px;
+      padding: 0 2px;
+      border: 0;
+      background: none;
+      color: var(--muted);
+      font: inherit;
+      font-size: 17px;
+      font-weight: 700;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .kind svg { width: 20px; height: 20px; }
+    .kind[aria-selected="true"] { color: var(--ink); }
+
+    .kind[aria-selected="true"]::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 4px;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--accent);
+    }
+
+    .kind:focus-visible { outline: 3px solid var(--accent-strong); outline-offset: 2px; border-radius: 6px; }
+    .kind:disabled { cursor: progress; }
+
+    /* Carte principale */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 18px;
+    }
+
+    @media (min-width: 560px) {
+      .app { padding-top: 48px; }
+      .panel { padding: 26px; }
+    }
+
+    /* Sélecteur Chiffrer / Déchiffrer */
+    .modes {
+      position: relative;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      margin: 0 0 20px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--field);
+    }
+
+    .modes legend { padding: 0; }
+    .modes input { position: absolute; opacity: 0; pointer-events: none; }
+
+    .modes label {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 44px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      transition: color 200ms ease;
+    }
+
+    .modes label svg { width: 17px; height: 17px; }
+    .modes input:checked + label { color: var(--surface); }
+    .modes input:focus-visible + label { outline: 3px solid var(--accent-strong); outline-offset: 2px; }
+
+    .modes .thumb {
+      position: absolute;
+      top: 4px;
+      bottom: 4px;
+      left: 4px;
+      width: calc(50% - 4px);
+      border-radius: 999px;
+      background: var(--ink);
+      transition: transform 260ms cubic-bezier(.2, .8, .2, 1);
+    }
+
+    .modes.is-decrypt .thumb { transform: translateX(100%); }
+
+    /* Champs */
+    .field { margin-bottom: 18px; }
+
+    .field-label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 700;
+      font-size: 15px;
+    }
+
+    textarea, .pw-wrap input {
+      width: 100%;
+      border: 1.5px solid var(--line);
+      border-radius: 14px;
+      background: var(--field);
+      color: var(--ink);
+      font: inherit;
+      font-size: 16px;
+    }
+
+    textarea {
+      display: block;
+      min-height: 148px;
+      padding: 14px 15px;
+      resize: vertical;
+      line-height: 1.5;
+    }
+
+    .is-decrypt-mode textarea {
+      font-family: var(--mono);
+      font-size: 14px;
+      word-break: break-all;
+    }
+
+    textarea::placeholder, .pw-wrap input::placeholder { color: var(--muted); opacity: .8; }
+
+    textarea:focus, .pw-wrap input:focus {
+      outline: none;
+      border-color: var(--accent-strong);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
+    }
+
+    .pw-wrap { position: relative; }
+    .pw-wrap input { height: 52px; padding: 0 96px 0 15px; }
+
+    .pw-toggle {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      bottom: 6px;
+      padding: 0 14px;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      color: var(--ink);
+      font: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .pw-toggle:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+    .pw-toggle:focus-visible { outline: 3px solid var(--accent-strong); outline-offset: 0; }
+
+    /* Choix de fichier */
+    .drop {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      min-height: 148px;
+      padding: 20px 16px;
+      border: 2px dashed var(--line);
+      border-radius: 14px;
+      background: var(--field);
+      text-align: center;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: border-color 150ms ease, background-color 150ms ease;
+    }
+
+    .drop:hover, .drop.is-over { border-color: var(--accent-strong); }
+    .drop.is-over { background: color-mix(in srgb, var(--accent) 12%, var(--field)); }
+    .drop:focus-within { outline: 3px solid var(--accent-strong); outline-offset: 2px; }
+    .drop svg { width: 34px; height: 34px; margin-bottom: 6px; color: var(--ink); }
+    .drop-title { font-weight: 700; font-size: 16px; }
+    .drop-sub { color: var(--muted); font-size: 14px; max-width: 36ch; }
+
+    .file-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px;
+      border: 1.5px solid var(--line);
+      border-radius: 14px;
+      background: var(--field);
+    }
+
+    .file-thumb {
+      flex: none;
+      display: grid;
+      place-items: center;
+      width: 60px;
+      height: 60px;
+      border-radius: 10px;
+      overflow: hidden;
+      background: var(--surface);
+      color: var(--muted);
+    }
+
+    .file-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .file-thumb svg { width: 26px; height: 26px; }
+    .file-meta { flex: 1; min-width: 0; }
+
+    .file-name {
+      font-weight: 700;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .file-size { color: var(--muted); font-size: 14px; }
+
+    .small-btn {
+      flex: none;
+      min-height: 40px;
+      padding: 0 14px;
+      border: 1.5px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface);
+      color: var(--ink);
+      font: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .small-btn:hover { border-color: var(--accent-strong); }
+    .small-btn:focus-visible { outline: 3px solid var(--accent-strong); outline-offset: 2px; }
+
+    /* Indicateur de solidité */
+    .meter {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 10px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .bars {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+      width: 112px;
+      flex: none;
+    }
+
+    .bars span {
+      height: 6px;
+      border-radius: 3px;
+      background: var(--line);
+      transition: background-color 200ms ease;
+    }
+
+    .meter[data-level="1"] .bars span:nth-child(-n+1) { background: var(--err); }
+    .meter[data-level="2"] .bars span:nth-child(-n+2) { background: var(--warn); }
+    .meter[data-level="3"] .bars span:nth-child(-n+3) { background: var(--ok); }
+    .meter[data-level="4"] .bars span { background: var(--ok); }
+
+    /* Astuces */
+    .hint {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 10px;
+      margin: 10px 0 0;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .link-btn {
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--ink);
+      font: inherit;
+      font-weight: 700;
+      text-decoration: underline;
+      text-decoration-color: var(--accent);
+      text-decoration-thickness: 2px;
+      text-underline-offset: 3px;
+      cursor: pointer;
+    }
+
+    .link-btn:focus-visible { outline: 3px solid var(--accent-strong); outline-offset: 2px; border-radius: 4px; }
+
+    /* Boutons d'action */
+    .actions { display: flex; gap: 10px; margin-top: 22px; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 52px;
+      padding: 0 20px;
+      border-radius: 14px;
+      font: inherit;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: background-color 150ms ease, transform 100ms ease;
+    }
+
+    .btn:active { transform: translateY(1px); }
+    .btn:focus-visible { outline: 3px solid var(--accent-strong); outline-offset: 3px; }
+
+    .btn-primary { flex: 1; border: 0; background: var(--accent); color: var(--on-accent); }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-primary[aria-busy="true"] { cursor: progress; opacity: .75; }
+
+    .btn-ghost { border: 1.5px solid var(--line); background: transparent; color: var(--ink); }
+    .btn-ghost:hover { background: var(--field); }
+
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2.5px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      animation: spin 700ms linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Messages d'état */
+    .status { margin: 14px 0 0; font-size: 15px; font-weight: 600; }
+    .status:empty { display: none; }
+    .status.ok { color: var(--ok); }
+    .status.info { color: var(--muted); }
+
+    .status.err {
+      padding: 11px 14px;
+      border-radius: 12px;
+      background: var(--err-bg);
+      color: var(--err);
+    }
+
+    /* Résultat */
+    .result {
+      margin-top: 16px;
+      border-radius: 18px;
+      background: var(--vault);
+      color: var(--vault-ink);
+      overflow: hidden;
+    }
+
+    .result.is-entering { animation: drop-in 320ms cubic-bezier(.2, .8, .2, 1); }
+
+    @keyframes drop-in {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    .result-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 12px 0 18px;
+    }
+
+    .result-head h2 { margin: 0; font-size: 16px; font-weight: 700; }
+
+    .vault-btn {
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 42px;
+      padding: 0 16px;
+      border: 0;
+      border-radius: 999px;
+      background: var(--accent);
+      color: var(--on-accent);
+      font: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .vault-btn:hover { background: var(--accent-hover); }
+    .vault-btn:focus-visible { outline: 3px solid var(--vault-cipher); outline-offset: 3px; }
+    .vault-btn[aria-busy="true"] { opacity: .75; cursor: progress; }
+    .vault-btn svg { width: 17px; height: 17px; }
+    .vault-btn .icon-done { display: none; }
+    .vault-btn.is-done .icon-copy { display: none; }
+    .vault-btn.is-done .icon-done { display: block; }
+
+    .result-text {
+      margin: 0;
+      padding: 14px 18px 16px;
+      max-height: 46vh;
+      overflow: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.55;
+      color: var(--vault-ink);
+      -webkit-user-select: text;
+      user-select: text;
+    }
+
+    .result-text.is-cipher {
+      font-family: var(--mono);
+      font-size: 14px;
+      word-break: break-all;
+      color: var(--vault-cipher);
+    }
+
+    .result-text:focus-visible { outline: 3px solid var(--vault-cipher); outline-offset: -3px; }
+
+    .result-preview {
+      display: grid;
+      place-items: center;
+      margin: 14px 12px 0;
+      border-radius: 12px;
+      background: var(--vault-2);
+      overflow: hidden;
+    }
+
+    .result-preview img {
+      display: block;
+      max-width: 100%;
+      max-height: 52vh;
+      object-fit: contain;
+    }
+
+    .preview-none {
+      margin: 0;
+      padding: 26px 18px;
+      color: var(--vault-muted);
+      font-size: 14px;
+      text-align: center;
+    }
+
+    .result-file {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 18px 16px;
+    }
+
+    #resultFileIcon { flex: none; display: flex; }
+    .result-file svg { flex: none; width: 34px; height: 34px; color: var(--vault-cipher); }
+    .result-file .file-name { color: var(--vault-ink); white-space: normal; overflow-wrap: anywhere; }
+    .result-file .file-size { color: var(--vault-muted); }
+
+    .result-foot {
+      margin: 0;
+      padding: 12px 18px 16px;
+      border-top: 1px solid color-mix(in srgb, var(--vault-ink) 14%, transparent);
+      color: var(--vault-muted);
+      font-size: 14px;
+    }
+
+    /* Pied de page */
+    .about {
+      margin: 22px 6px 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .about p { margin: 0 0 8px; }
+    .about strong { color: var(--ink); font-weight: 700; }
+    .nowrap { white-space: nowrap; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 1ms !important;
+        scroll-behavior: auto !important;
+      }
+      .spinner { animation: none; border-right-color: currentColor; opacity: .6; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="brand is-open" id="brand">
+      <svg class="mark" viewBox="0 0 40 48" aria-hidden="true">
+        <path class="shackle" d="M11.5 22V14a8.5 8.5 0 0 1 17 0v8" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round"/>
+        <rect x="3" y="20" width="34" height="26" rx="7" fill="var(--accent)"/>
+        <circle cx="20" cy="31" r="3.6" fill="var(--on-accent)"/>
+        <rect x="18.4" y="32" width="3.2" height="7.5" rx="1.6" fill="var(--on-accent)"/>
+      </svg>
+      <div>
+        <h1>Mora Chiffrement</h1>
+        <p class="tagline">Rendez un message ou une image illisible. Seule la personne qui a le mot de passe pourra l’ouvrir.</p>
+      </div>
+    </header>
+
+    <div class="kinds" role="tablist" aria-label="Type de contenu">
+      <button type="button" class="kind" role="tab" id="tabText" aria-controls="cryptoForm" aria-selected="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+        Texte
+      </button>
+      <button type="button" class="kind" role="tab" id="tabImage" aria-controls="cryptoForm" aria-selected="false" tabindex="-1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-9 9"/></svg>
+        Image
+      </button>
+    </div>
+
+    <form class="panel" id="cryptoForm" role="tabpanel" aria-labelledby="tabText" novalidate>
+      <fieldset class="modes" id="modes">
+        <legend class="sr-only">Que voulez-vous faire&#8239;?</legend>
+        <span class="thumb" aria-hidden="true"></span>
+        <input type="radio" name="mode" id="modeEncrypt" value="encrypt" checked>
+        <label for="modeEncrypt">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+          Chiffrer
+        </label>
+        <input type="radio" name="mode" id="modeDecrypt" value="decrypt">
+        <label for="modeDecrypt">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>
+          Déchiffrer
+        </label>
+      </fieldset>
+
+      <!-- Texte -->
+      <div class="field" id="textField">
+        <label class="field-label" for="message" id="messageLabel">Votre message</label>
+        <textarea id="message" rows="6" placeholder="Écrivez le message à protéger…"></textarea>
+        <p class="hint" id="hint" hidden>
+          <span>Ce texte est déjà chiffré.</span>
+          <button type="button" class="link-btn" id="hintSwitch">Passer en mode Déchiffrer</button>
+        </p>
+      </div>
+
+      <!-- Image -->
+      <div class="field" id="imageField" hidden>
+        <span class="field-label" id="fileLabel">Image à chiffrer</span>
+        <label class="drop" id="drop">
+          <input type="file" id="fileInput" class="sr-only" aria-labelledby="fileLabel dropTitle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-9 9"/></svg>
+          <span class="drop-title" id="dropTitle">Choisir une image</span>
+          <span class="drop-sub" id="dropSub">JPG, PNG, HEIC, WebP, GIF, RAW et les autres formats, jusqu’à 40&nbsp;Mo</span>
+        </label>
+        <div class="file-card" id="fileCard" hidden>
+          <div class="file-thumb" id="fileThumb"></div>
+          <div class="file-meta">
+            <div class="file-name" id="fileName"></div>
+            <div class="file-size" id="fileSize"></div>
+          </div>
+          <button type="button" class="small-btn" id="fileChange">Changer</button>
+        </div>
+        <p class="hint" id="fileHint" hidden>
+          <span id="fileHintText"></span>
+          <button type="button" class="link-btn" id="fileHintSwitch"></button>
+        </p>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="password">Mot de passe</label>
+        <div class="pw-wrap">
+          <input id="password" type="password" name="mora-secret" placeholder="8 caractères minimum"
+                 autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go">
+          <button type="button" class="pw-toggle" id="pwToggle" aria-controls="password" aria-pressed="false">Afficher</button>
+        </div>
+        <div class="meter" id="meter" data-level="0" aria-live="polite">
+          <span class="bars" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+          <span id="meterText">Choisissez un mot de passe que vous retiendrez.</span>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn btn-primary" id="runBtn">
+          <span class="spinner" id="spinner" hidden></span>
+          <span id="runLabel">Chiffrer le message</span>
+        </button>
+        <button type="button" class="btn btn-ghost" id="clearBtn">Effacer</button>
+      </div>
+
+      <p class="status" id="status" role="status" aria-live="polite"></p>
+
+      <!-- Résultat texte -->
+      <section class="result" id="resultBox" aria-labelledby="resultTitle" hidden>
+        <div class="result-head">
+          <h2 id="resultTitle">Message chiffré</h2>
+          <button type="button" class="vault-btn" id="copyBtn">
+            <svg class="icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>
+            <svg class="icon-done" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+            <span id="copyLabel">Copier</span>
+          </button>
+        </div>
+        <pre class="result-text" id="resultText" tabindex="0"></pre>
+        <p class="result-foot" id="resultFoot">Envoyez ce texte. Donnez le mot de passe par un autre moyen&#8239;: appel, en personne.</p>
+      </section>
+
+      <!-- Résultat image -->
+      <section class="result" id="imageResult" aria-labelledby="imageResultTitle" hidden>
+        <div class="result-head">
+          <h2 id="imageResultTitle">Image chiffrée</h2>
+          <button type="button" class="vault-btn" id="downloadBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/></svg>
+            <span>Télécharger</span>
+          </button>
+        </div>
+        <div class="result-preview" id="previewWrap" hidden>
+          <img id="previewImg" alt="Aperçu de l’image déchiffrée" hidden>
+          <p class="preview-none" id="previewNone" hidden>Aperçu impossible pour ce format sur cet appareil. L’image est intacte&#8239;: téléchargez-la pour l’ouvrir.</p>
+        </div>
+        <div class="result-file">
+          <span id="resultFileIcon"></span>
+          <div class="file-meta">
+            <div class="file-name" id="outName"></div>
+            <div class="file-size" id="outSize"></div>
+          </div>
+        </div>
+        <p class="result-foot" id="imageFoot"></p>
+      </section>
+    </form>
+
+    <footer class="about">
+      <p><strong>Rien ne quitte votre appareil.</strong> Le message, l’image et le mot de passe ne sont ni envoyés ni enregistrés.</p>
+      <p>Si vous oubliez le mot de passe, le contenu ne pourra plus jamais être ouvert. Chiffrement <span class="nowrap">AES-256-GCM</span>, clé tirée du mot de passe avec <span class="nowrap">PBKDF2-SHA-256</span> (250&nbsp;000 itérations).</p>
+    </footer>
+  </main>
+
+  <script>
+    'use strict';
+
+    // ---------- Éléments ----------
+    const $ = (id) => document.getElementById(id);
+    const form = $('cryptoForm');
+    const modes = $('modes');
+    const brand = $('brand');
+    const tabText = $('tabText');
+    const tabImage = $('tabImage');
+    const textField = $('textField');
+    const imageField = $('imageField');
+    const messageBox = $('message');
+    const messageLabel = $('messageLabel');
+    const passwordBox = $('password');
+    const pwToggle = $('pwToggle');
+    const meter = $('meter');
+    const meterText = $('meterText');
+    const hint = $('hint');
+    const runBtn = $('runBtn');
+    const runLabel = $('runLabel');
+    const spinner = $('spinner');
+    const clearBtn = $('clearBtn');
+    const statusBox = $('status');
+    const resultBox = $('resultBox');
+    const resultTitle = $('resultTitle');
+    const resultText = $('resultText');
+    const resultFoot = $('resultFoot');
+    const copyBtn = $('copyBtn');
+    const copyLabel = $('copyLabel');
+
+    const fileInput = $('fileInput');
+    const fileLabel = $('fileLabel');
+    const drop = $('drop');
+    const dropTitle = $('dropTitle');
+    const dropSub = $('dropSub');
+    const fileCard = $('fileCard');
+    const fileThumb = $('fileThumb');
+    const fileName = $('fileName');
+    const fileSize = $('fileSize');
+    const fileHint = $('fileHint');
+    const fileHintText = $('fileHintText');
+    const fileHintSwitch = $('fileHintSwitch');
+    const imageResult = $('imageResult');
+    const imageResultTitle = $('imageResultTitle');
+    const downloadBtn = $('downloadBtn');
+    const previewWrap = $('previewWrap');
+    const previewImg = $('previewImg');
+    const previewNone = $('previewNone');
+    const outName = $('outName');
+    const outSize = $('outSize');
+    const imageFoot = $('imageFoot');
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    // Format texte inchangé : les messages de l’ancienne version restent lisibles.
+    const VERSION = 'v1';
+    const ITERATIONS = 250000;
+    const MIN_PASSWORD = 8;
+
+    // Format image : texte « mora-img-v1.sel.iv.données » (fichier .mora.txt)
+    const IMG_PREFIX = 'mora-img-v1.';
+    const IMG_AAD = encoder.encode('mora-img-v1');
+    const MAX_IMAGE = 40 * 1024 * 1024;
+    const MAX_ENCRYPTED = 60 * 1024 * 1024;
+    const SAVE_EXT = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']);
+    const IMAGE_EXT = new Set([
+      'jpg', 'jpeg', 'jpe', 'jfif', 'png', 'apng', 'gif', 'webp', 'avif', 'heic', 'heif', 'bmp', 'dib',
+      'tif', 'tiff', 'svg', 'ico', 'cur', 'jxl', 'jp2', 'psd', 'raw', 'dng', 'cr2', 'cr3', 'nef', 'arw',
+      'orf', 'rw2', 'raf', 'srw', 'pef', 'tga', 'exr', 'hdr', 'xcf'
+    ]);
+    const MIME_EXT = {
+      'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp',
+      'image/avif': 'avif', 'image/heic': 'heic', 'image/heif': 'heif', 'image/bmp': 'bmp',
+      'image/tiff': 'tif', 'image/svg+xml': 'svg', 'image/x-icon': 'ico', 'image/vnd.microsoft.icon': 'ico',
+      'image/jxl': 'jxl'
+    };
+
+    const LABELS = {
+      text: {
+        encrypt: { run: 'Chiffrer le message', busy: 'Chiffrement…' },
+        decrypt: { run: 'Déchiffrer le message', busy: 'Déchiffrement…' }
+      },
+      image: {
+        encrypt: { run: 'Chiffrer l’image', busy: 'Chiffrement…' },
+        decrypt: { run: 'Déchiffrer l’image', busy: 'Déchiffrement…' }
+      }
+    };
+
+    let kind = 'text';
+    let mode = 'encrypt';
+    let busy = false;
+    let currentResult = '';
+    let revealToken = 0;
+    let copyTimer = 0;
+
+    let selectedFile = null;
+    let selectedIsMora = false;
+    let selectedIsImage = false;
+    let selectToken = 0;
+    let output = null;   // { blob, filename }
+    let objectUrls = [];
+
+    // Téléchargement : capacité du lecteur claude.ai si elle est disponible.
+    const downloadsReady = (window.claude && typeof window.claude.use === 'function')
+      ? window.claude.use('downloads').catch(() => null)
+      : Promise.resolve(null);
+
+    // ---------- Utilitaires ----------
+    class FormatError extends Error {}
+
+    function setStatus(text, type) {
+      statusBox.textContent = text || '';
+      statusBox.className = 'status' + (type ? ' ' + type : '');
+    }
+
+    function formatSize(bytes) {
+      const nf = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 });
+      if (bytes < 1024) return bytes + ' octets';
+      if (bytes < 1024 * 1024) return nf.format(bytes / 1024) + '\u00A0Ko';
+      return nf.format(bytes / (1024 * 1024)) + '\u00A0Mo';
+    }
+
+    function extOf(name) {
+      const m = /\.([A-Za-z0-9]{1,8})$/.exec(name || '');
+      return m ? m[1].toLowerCase() : '';
+    }
+
+    function baseOf(name) {
+      return (name || '').replace(/\.[A-Za-z0-9]{1,8}$/, '');
+    }
+
+    function cleanName(name) {
+      const cleaned = (name || '').replace(/[\\/:*?"<>|\u0000-\u001F]/g, '_').replace(/\s+/g, ' ').trim();
+      return cleaned.slice(0, 120) || 'image';
+    }
+
+    function randomTag() {
+      const a = crypto.getRandomValues(new Uint8Array(3));
+      return Array.from(a, (b) => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function bytesToBase64(bytes) {
+      let binary = '';
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      }
+      return btoa(binary);
+    }
+
+    function base64ToBytes(text) {
+      let s = text.replace(/-/g, '+').replace(/_/g, '/');
+      if (!/^[A-Za-z0-9+/]*={0,2}$/.test(s)) throw new FormatError();
+      const rest = s.length % 4;
+      if (rest === 1) throw new FormatError();
+      if (rest) s += '='.repeat(4 - rest);
+      let binary;
+      try { binary = atob(s); } catch (e) { throw new FormatError(); }
+      const out = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+      return out;
+    }
+
+    const PAYLOAD_RE = /v1\.([A-Za-z0-9+/_=-]+)\.([A-Za-z0-9+/_=-]+)\.([A-Za-z0-9+/_=-]+)/;
+
+    function findPayload(text) {
+      return text.replace(/\s+/g, '').match(PAYLOAD_RE);
+    }
+
+    function looksEncrypted(text) {
+      return /^\s*["'«“]?\s*v1\.[A-Za-z0-9+/_=-]{8,}\./.test(text);
+    }
+
+    function looksLikeImagePayload(text) {
+      return text.indexOf(IMG_PREFIX) !== -1;
+    }
+
+    function cryptoAvailable() {
+      return !!(window.crypto && window.crypto.subtle && window.isSecureContext !== false);
+    }
+
+    async function deriveKey(password, salt) {
+      const passwordKey = await crypto.subtle.importKey(
+        'raw', encoder.encode(password), 'PBKDF2', false, ['deriveKey']
+      );
+      return crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt, iterations: ITERATIONS, hash: 'SHA-256' },
+        passwordKey,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt', 'decrypt']
+      );
+    }
+
+    // ---------- Texte ----------
+    async function encryptText(message, password) {
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const key = await deriveKey(password, salt);
+      const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoder.encode(message));
+      return [VERSION, bytesToBase64(salt), bytesToBase64(iv), bytesToBase64(new Uint8Array(encrypted))].join('.');
+    }
+
+    async function decryptText(raw, password) {
+      const match = findPayload(raw);
+      if (!match) throw new FormatError();
+      const salt = base64ToBytes(match[1]);
+      const iv = base64ToBytes(match[2]);
+      const data = base64ToBytes(match[3]);
+      if (salt.length !== 16 || iv.length !== 12 || data.length < 16) throw new FormatError();
+      const key = await deriveKey(password, salt);
+      const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+      return decoder.decode(decrypted);
+    }
+
+    // ---------- Image ----------
+    // Le nom et le type de l’image sont chiffrés avec elle.
+    async function encryptImage(file, password) {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const meta = encoder.encode(JSON.stringify({ n: file.name || 'image', t: file.type || '', s: bytes.length }));
+      const plain = new Uint8Array(4 + meta.length + bytes.length);
+      new DataView(plain.buffer).setUint32(0, meta.length);
+      plain.set(meta, 4);
+      plain.set(bytes, 4 + meta.length);
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const key = await deriveKey(password, salt);
+      const encrypted = new Uint8Array(await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv, additionalData: IMG_AAD }, key, plain
+      ));
+      return IMG_PREFIX + bytesToBase64(salt) + '.' + bytesToBase64(iv) + '.' + bytesToBase64(encrypted) + '\n';
+    }
+
+    async function decryptImage(text, password) {
+      const s = text.replace(/\s+/g, '');
+      const start = s.indexOf(IMG_PREFIX);
+      if (start === -1) throw new FormatError();
+      const parts = s.slice(start + IMG_PREFIX.length).split('.');
+      if (parts.length !== 3) throw new FormatError();
+      const salt = base64ToBytes(parts[0]);
+      const iv = base64ToBytes(parts[1]);
+      const data = base64ToBytes(parts[2]);
+      if (salt.length !== 16 || iv.length !== 12 || data.length < 20) throw new FormatError();
+      const key = await deriveKey(password, salt);
+      const plain = new Uint8Array(await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv, additionalData: IMG_AAD }, key, data
+      ));
+      const metaLen = new DataView(plain.buffer).getUint32(0);
+      if (metaLen > 8192 || metaLen > plain.length - 4) throw new FormatError();
+      let meta;
+      try { meta = JSON.parse(decoder.decode(plain.subarray(4, 4 + metaLen))); }
+      catch (e) { throw new FormatError(); }
+      return {
+        name: cleanName(String(meta.n || 'image')),
+        type: String(meta.t || ''),
+        bytes: plain.subarray(4 + metaLen)
+      };
+    }
+
+    // ZIP sans compression, pour livrer intacts les formats que le lecteur ne sait pas enregistrer.
+    const CRC_TABLE = (() => {
+      const t = new Uint32Array(256);
+      for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        t[n] = c >>> 0;
+      }
+      return t;
+    })();
+
+    function crc32(bytes) {
+      let c = 0xFFFFFFFF;
+      for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+      return (c ^ 0xFFFFFFFF) >>> 0;
+    }
+
+    function makeZip(name, data) {
+      const nameBytes = encoder.encode(name);
+      const crc = crc32(data);
+      const size = data.length;
+      const d = new Date();
+      const dosTime = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+      const dosDate = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+
+      const local = new Uint8Array(30 + nameBytes.length);
+      const lv = new DataView(local.buffer);
+      lv.setUint32(0, 0x04034b50, true);
+      lv.setUint16(4, 20, true);
+      lv.setUint16(6, 0x0800, true);
+      lv.setUint16(8, 0, true);
+      lv.setUint16(10, dosTime, true);
+      lv.setUint16(12, dosDate, true);
+      lv.setUint32(14, crc, true);
+      lv.setUint32(18, size, true);
+      lv.setUint32(22, size, true);
+      lv.setUint16(26, nameBytes.length, true);
+      lv.setUint16(28, 0, true);
+      local.set(nameBytes, 30);
+
+      const central = new Uint8Array(46 + nameBytes.length);
+      const cv = new DataView(central.buffer);
+      cv.setUint32(0, 0x02014b50, true);
+      cv.setUint16(4, 20, true);
+      cv.setUint16(6, 20, true);
+      cv.setUint16(8, 0x0800, true);
+      cv.setUint16(10, 0, true);
+      cv.setUint16(12, dosTime, true);
+      cv.setUint16(14, dosDate, true);
+      cv.setUint32(16, crc, true);
+      cv.setUint32(20, size, true);
+      cv.setUint32(24, size, true);
+      cv.setUint16(28, nameBytes.length, true);
+      cv.setUint32(42, 0, true);
+      central.set(nameBytes, 46);
+
+      const end = new Uint8Array(22);
+      const ev = new DataView(end.buffer);
+      ev.setUint32(0, 0x06054b50, true);
+      ev.setUint16(8, 1, true);
+      ev.setUint16(10, 1, true);
+      ev.setUint32(12, central.length, true);
+      ev.setUint32(16, local.length + size, true);
+
+      return new Blob([local, data, central, end], { type: 'application/zip' });
+    }
+
+    // ---------- Aperçus ----------
+    function trackUrl(url) { objectUrls.push(url); return url; }
+
+    function releaseUrls() {
+      objectUrls.forEach((u) => { try { URL.revokeObjectURL(u); } catch (e) {} });
+      objectUrls = [];
+    }
+
+    function blobToDataUrl(blob) {
+      return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = () => reject(r.error);
+        r.readAsDataURL(blob);
+      });
+    }
+
+    // Essaie une URL blob, puis une URL data, sinon signale l’échec.
+    function showImage(img, blob, onOk, onFail) {
+      let triedData = false;
+      const tryData = () => {
+        if (triedData || blob.size > 25 * 1024 * 1024) return onFail();
+        triedData = true;
+        blobToDataUrl(blob).then((d) => { img.src = d; }).catch(onFail);
+      };
+      img.onload = onOk;
+      img.onerror = tryData;
+      try { img.src = trackUrl(URL.createObjectURL(blob)); }
+      catch (e) { tryData(); }
+    }
+
+    const DOC_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>';
+    const LOCKED_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><rect x="9" y="13" width="6" height="5" rx="1"/><path d="M10.5 13v-1.5a1.5 1.5 0 0 1 3 0V13"/></svg>';
+    const IMG_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-9 9"/></svg>';
+
+    // ---------- Solidité du mot de passe ----------
+    function passwordLevel(pw) {
+      if (!pw) return 0;
+      if (pw.length < MIN_PASSWORD) return 1;
+      const kinds = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((r) => r.test(pw)).length;
+      const points = (pw.length >= 12 ? 1 : 0) + (pw.length >= 16 ? 1 : 0) + (kinds >= 3 ? 1 : 0);
+      return 2 + Math.min(points, 2);
+    }
+
+    const LEVEL_TEXT = [
+      'Choisissez un mot de passe que vous retiendrez.',
+      'Trop court\u202F: 8 caractères minimum.',
+      'Faible. Ajoutez des chiffres, des majuscules ou allongez-le.',
+      'Correct.',
+      'Solide.'
+    ];
+
+    function updateMeter() {
+      const level = passwordLevel(passwordBox.value);
+      meter.dataset.level = String(level);
+      meterText.textContent = LEVEL_TEXT[level];
+    }
+
+    // ---------- Affichage selon le type et le mode ----------
+    function refreshLabels() {
+      const isDecrypt = mode === 'decrypt';
+      const isImage = kind === 'image';
+      runLabel.textContent = busy ? LABELS[kind][mode].busy : LABELS[kind][mode].run;
+
+      textField.hidden = isImage;
+      imageField.hidden = !isImage;
+
+      messageLabel.textContent = isDecrypt ? 'Message chiffré' : 'Votre message';
+      messageBox.placeholder = isDecrypt ? 'Collez ici le texte reçu (il commence par v1.)' : 'Écrivez le message à protéger…';
+      messageBox.spellcheck = !isDecrypt;
+      messageBox.setAttribute('autocapitalize', isDecrypt ? 'off' : 'sentences');
+      messageBox.setAttribute('autocorrect', isDecrypt ? 'off' : 'on');
+
+      fileLabel.textContent = isDecrypt ? 'Fichier chiffré' : 'Image à chiffrer';
+      dropTitle.textContent = isDecrypt ? 'Choisir le fichier reçu' : 'Choisir une image';
+      dropSub.textContent = isDecrypt
+        ? 'Le fichier .mora.txt envoyé par votre contact'
+        : 'JPG, PNG, HEIC, WebP, GIF, RAW et les autres formats, jusqu’à 40\u00A0Mo';
+      if (isDecrypt) fileInput.removeAttribute('accept');
+      else fileInput.setAttribute('accept', 'image/*,' + Array.from(IMAGE_EXT, (e) => '.' + e).join(','));
+
+      meter.hidden = isDecrypt;
+      passwordBox.placeholder = isDecrypt ? 'Le mot de passe reçu' : '8 caractères minimum';
+      updateHint();
+      updateFileHint();
+    }
+
+    function setMode(next) {
+      mode = next;
+      const isDecrypt = mode === 'decrypt';
+      $(isDecrypt ? 'modeDecrypt' : 'modeEncrypt').checked = true;
+      modes.classList.toggle('is-decrypt', isDecrypt);
+      form.classList.toggle('is-decrypt-mode', isDecrypt);
+      hideResults();
+      setStatus('');
+      refreshLabels();
+    }
+
+    function setKind(next, opts = {}) {
+      if (next !== 'text' && next !== 'image') next = 'text';
+      const changed = next !== kind;
+      kind = next;
+      const isImage = kind === 'image';
+      tabText.setAttribute('aria-selected', String(!isImage));
+      tabImage.setAttribute('aria-selected', String(isImage));
+      tabText.tabIndex = isImage ? -1 : 0;
+      tabImage.tabIndex = isImage ? 0 : -1;
+      form.setAttribute('aria-labelledby', isImage ? 'tabImage' : 'tabText');
+      if (changed) { hideResults(); setStatus(''); }
+      refreshLabels();
+      if (opts.updateHash) {
+        const wanted = isImage ? '#image' : '#texte';
+        if (location.hash !== wanted) {
+          try { history.replaceState(null, '', wanted); } catch (e) { location.hash = wanted; }
+        }
+      }
+    }
+
+    function kindFromHash() {
+      return location.hash.replace('#', '') === 'image' ? 'image' : 'text';
+    }
+
+    function updateHint() {
+      hint.hidden = !(kind === 'text' && mode === 'encrypt' && looksEncrypted(messageBox.value));
+    }
+
+    function updateFileHint() {
+      if (kind !== 'image' || !selectedFile) { fileHint.hidden = true; return; }
+      if (mode === 'encrypt' && selectedIsMora) {
+        fileHintText.textContent = 'Ce fichier est déjà chiffré.';
+        fileHintSwitch.textContent = 'Passer en mode Déchiffrer';
+        fileHintSwitch.dataset.to = 'decrypt';
+        fileHint.hidden = false;
+      } else if (mode === 'decrypt' && !selectedIsMora && selectedIsImage) {
+        fileHintText.textContent = 'C’est une image normale, pas un fichier chiffré.';
+        fileHintSwitch.textContent = 'Passer en mode Chiffrer';
+        fileHintSwitch.dataset.to = 'encrypt';
+        fileHint.hidden = false;
+      } else {
+        fileHint.hidden = true;
+      }
+    }
+
+    // ---------- Choix du fichier ----------
+    async function selectFile(file) {
+      if (!file) return;
+      const token = ++selectToken;
+      hideResults();
+      setStatus('');
+      selectedFile = file;
+      const ext = extOf(file.name);
+      selectedIsImage = (file.type || '').startsWith('image/') || IMAGE_EXT.has(ext);
+      selectedIsMora = false;
+
+      fileName.textContent = file.name || 'Fichier sans nom';
+      fileSize.textContent = formatSize(file.size);
+      fileThumb.innerHTML = selectedIsImage ? IMG_ICON : DOC_ICON;
+      drop.hidden = true;
+      fileCard.hidden = false;
+
+      try {
+        const head = await file.slice(0, 64).text();
+        if (token !== selectToken) return;
+        selectedIsMora = head.trimStart().startsWith(IMG_PREFIX);
+      } catch (e) { selectedIsMora = false; }
+
+      if (selectedIsMora) {
+        selectedIsImage = false;
+        fileThumb.innerHTML = DOC_ICON;
+      } else if (selectedIsImage) {
+        const img = new Image();
+        img.alt = '';
+        showImage(img, file,
+          () => { if (token === selectToken) { fileThumb.innerHTML = ''; fileThumb.appendChild(img); } },
+          () => {}
+        );
+      }
+      updateFileHint();
+    }
+
+    function clearFile() {
+      selectToken++;
+      selectedFile = null;
+      selectedIsMora = false;
+      selectedIsImage = false;
+      fileInput.value = '';
+      fileCard.hidden = true;
+      drop.hidden = false;
+      fileThumb.innerHTML = '';
+      fileHint.hidden = true;
+    }
+
+    // ---------- Résultats ----------
+    const CIPHER_GLYPHS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+    function revealCipher(text) {
+      const token = ++revealToken;
+      if (reduceMotion.matches || text.length > 4000) {
+        resultText.textContent = text;
+        return;
+      }
+      const duration = 700;
+      const start = performance.now();
+      function frame(now) {
+        if (token !== revealToken) return;
+        const t = Math.min(1, (now - start) / duration);
+        const shown = Math.floor(text.length * (1 - Math.pow(1 - t, 3)));
+        let tail = '';
+        for (let i = shown; i < text.length; i++) {
+          tail += text[i] === '.' ? '.' : CIPHER_GLYPHS[(Math.random() * 64) | 0];
+        }
+        resultText.textContent = text.slice(0, shown) + tail;
+        if (t < 1) requestAnimationFrame(frame);
+        else resultText.textContent = text;
+      }
+      requestAnimationFrame(frame);
+    }
+
+    function enter(section) {
+      const wasHidden = section.hidden;
+      section.hidden = false;
+      if (wasHidden && !reduceMotion.matches) {
+        section.classList.remove('is-entering');
+        void section.offsetWidth;
+        section.classList.add('is-entering');
+      }
+      requestAnimationFrame(() => {
+        section.scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'nearest' });
+      });
+    }
+
+    function showTextResult(text, isCipher) {
+      currentResult = text;
+      resetCopyButton();
+      resultTitle.textContent = isCipher ? 'Message chiffré' : 'Message déchiffré';
+      resultText.classList.toggle('is-cipher', isCipher);
+      resultFoot.hidden = !isCipher;
+      if (isCipher) revealCipher(text);
+      else { revealToken++; resultText.textContent = text; }
+      resultText.scrollTop = 0;
+      enter(resultBox);
+    }
+
+    function showImageResult(opts) {
+      output = { blob: opts.blob, filename: opts.filename };
+      imageResultTitle.textContent = opts.title;
+      $('resultFileIcon').innerHTML = opts.preview ? IMG_ICON : LOCKED_ICON;
+      outName.textContent = opts.filename;
+      outSize.textContent = formatSize(opts.blob.size);
+      imageFoot.textContent = opts.foot;
+      imageFoot.hidden = !opts.foot;
+      previewImg.hidden = true;
+      previewNone.hidden = true;
+      previewImg.removeAttribute('src');
+      if (opts.preview) {
+        previewWrap.hidden = false;
+        showImage(previewImg, opts.preview,
+          () => { previewImg.hidden = false; previewNone.hidden = true; },
+          () => { previewImg.hidden = true; previewNone.hidden = false; }
+        );
+      } else {
+        previewWrap.hidden = true;
+      }
+      enter(imageResult);
+    }
+
+    function hideResults() {
+      revealToken++;
+      currentResult = '';
+      resultBox.hidden = true;
+      resultText.textContent = '';
+      resetCopyButton();
+      output = null;
+      imageResult.hidden = true;
+      previewImg.removeAttribute('src');
+      previewImg.hidden = true;
+      // Les aperçus du fichier choisi restent ; seules les URL du résultat sont libérées au prochain effacement.
+    }
+
+    function setLocked(locked) {
+      brand.classList.toggle('is-open', !locked);
+    }
+
+    // ---------- Action principale ----------
+    function setBusy(state) {
+      busy = state;
+      runBtn.setAttribute('aria-busy', state ? 'true' : 'false');
+      spinner.hidden = !state;
+      runLabel.textContent = state ? LABELS[kind][mode].busy : LABELS[kind][mode].run;
+      clearBtn.disabled = state;
+      modes.disabled = state;
+      tabText.disabled = state;
+      tabImage.disabled = state;
+      fileInput.disabled = state;
+      $('fileChange').disabled = state;
+    }
+
+    function fail(text, field) {
+      hideResults();
+      setStatus(text, 'err');
+      if (field) field.focus();
+    }
+
+    async function run() {
+      if (busy) return;
+      if (!cryptoAvailable()) {
+        setStatus('Ce navigateur ne permet pas le chiffrement. Ouvrez la page dans Chrome, Firefox ou Safari à jour.', 'err');
+        return;
+      }
+      if (kind === 'image') return runImage();
+      return runText();
+    }
+
+    async function runText() {
+      const message = messageBox.value;
+      const password = passwordBox.value;
+
+      if (mode === 'encrypt') {
+        if (!message.trim()) return fail('Écrivez d’abord un message.', messageBox);
+        if (looksEncrypted(message)) return fail('Ce texte est déjà chiffré. Passez en mode Déchiffrer pour le lire.', messageBox);
+        if (password.length < MIN_PASSWORD) return fail('Le mot de passe doit faire au moins 8 caractères.', passwordBox);
+      } else {
+        if (!message.trim()) return fail('Collez d’abord le message chiffré.', messageBox);
+        if (looksLikeImagePayload(message)) return fail('C’est une image chiffrée. Ouvrez le fichier reçu dans l’onglet Image.');
+        if (!password) return fail('Entrez le mot de passe.', passwordBox);
+      }
+
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      setStatus('');
+      setBusy(true);
+      try {
+        if (mode === 'encrypt') {
+          const cipher = await encryptText(message, password);
+          setLocked(true);
+          setStatus('Message chiffré. Copiez-le et envoyez-le.', 'ok');
+          showTextResult(cipher, true);
+        } else {
+          const plain = await decryptText(message, password);
+          setLocked(false);
+          setStatus('Message déchiffré.', 'ok');
+          showTextResult(plain, false);
+        }
+      } catch (error) {
+        hideResults();
+        if (mode === 'decrypt' && error instanceof FormatError) {
+          setStatus('Ce texte n’est pas un message chiffré valide. Vérifiez qu’il a été copié en entier.', 'err');
+        } else if (mode === 'decrypt') {
+          setStatus('Mot de passe incorrect, ou message modifié pendant l’envoi.', 'err');
+        } else {
+          setStatus('Le chiffrement a échoué. Réessayez.', 'err');
+        }
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function runImage() {
+      const file = selectedFile;
+      const password = passwordBox.value;
+
+      if (mode === 'encrypt') {
+        if (!file) return fail('Choisissez d’abord une image.');
+        if (selectedIsMora) return fail('Ce fichier est déjà chiffré. Passez en mode Déchiffrer pour l’ouvrir.');
+        if (!selectedIsImage) return fail('Ce fichier n’est pas une image. Choisissez une photo ou une image (JPG, PNG, HEIC…).');
+        if (file.size === 0) return fail('Cette image est vide. Choisissez-en une autre.');
+        if (file.size > MAX_IMAGE) return fail('Cette image fait ' + formatSize(file.size) + '. La limite est de 40\u00A0Mo.');
+        if (password.length < MIN_PASSWORD) return fail('Le mot de passe doit faire au moins 8 caractères.', passwordBox);
+      } else {
+        if (!file) return fail('Choisissez d’abord le fichier chiffré reçu.');
+        if (!selectedIsMora) {
+          return fail(selectedIsImage
+            ? 'C’est une image normale, pas un fichier chiffré. Passez en mode Chiffrer pour la protéger.'
+            : 'Ce fichier n’a pas été créé par Mora Chiffrement. Choisissez le fichier .mora.txt reçu.');
+        }
+        if (file.size > MAX_ENCRYPTED) return fail('Ce fichier est trop volumineux pour être une image chiffrée par Mora Chiffrement.');
+        if (!password) return fail('Entrez le mot de passe.', passwordBox);
+      }
+
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      setStatus('');
+      setBusy(true);
+      try {
+        if (mode === 'encrypt') {
+          const payload = await encryptImage(file, password);
+          const blob = new Blob([payload], { type: 'text/plain' });
+          setLocked(true);
+          setStatus('Image chiffrée. Téléchargez le fichier et envoyez-le.', 'ok');
+          showImageResult({
+            title: 'Image chiffrée',
+            blob,
+            filename: 'image-chiffree-' + randomTag() + '.mora.txt',
+            foot: 'Envoyez ce fichier comme document (WhatsApp, Messenger, e-mail). Donnez le mot de passe par un autre moyen.'
+          });
+        } else {
+          const text = await file.text();
+          const img = await decryptImage(text, password);
+          let ext = extOf(img.name) || MIME_EXT[img.type] || '';
+          const base = baseOf(img.name) || 'image';
+          const type = img.type || (ext ? 'image/' + (ext === 'jpg' ? 'jpeg' : ext) : 'application/octet-stream');
+          const imageBlob = new Blob([img.bytes], { type });
+          let blob = imageBlob;
+          let filename = base + (ext ? '.' + ext : '');
+          let foot = '';
+          if (!SAVE_EXT.has(ext)) {
+            const inner = img.name || (base + (ext ? '.' + ext : ''));
+            blob = makeZip(inner, img.bytes);
+            filename = base + '.zip';
+            foot = 'Format ' + (ext ? ext.toUpperCase() : 'd’origine') + '\u202F: l’image est livrée intacte dans un fichier .zip. Ouvrez-le pour la récupérer.';
+          }
+          setLocked(false);
+          setStatus('Image déchiffrée.', 'ok');
+          showImageResult({ title: 'Image déchiffrée', blob, filename, foot, preview: imageBlob });
+        }
+      } catch (error) {
+        hideResults();
+        if (mode === 'decrypt' && error instanceof FormatError) {
+          setStatus('Ce fichier est abîmé ou incomplet. Demandez à votre contact de le renvoyer.', 'err');
+        } else if (mode === 'decrypt') {
+          setStatus('Mot de passe incorrect, ou fichier modifié pendant l’envoi.', 'err');
+        } else if (error && error.name === 'NotReadableError') {
+          setStatus('Impossible de lire cette image. Choisissez-la à nouveau.', 'err');
+        } else {
+          setStatus('Le chiffrement a échoué. Réessayez.', 'err');
+        }
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    // ---------- Copier ----------
+    function resetCopyButton() {
+      clearTimeout(copyTimer);
+      copyBtn.classList.remove('is-done');
+      copyLabel.textContent = 'Copier';
+    }
+
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        try {
+          await navigator.clipboard.writeText(text);
+          return true;
+        } catch (e) { /* méthode de secours ci-dessous */ }
+      }
+      const temp = document.createElement('textarea');
+      temp.value = text;
+      temp.setAttribute('readonly', '');
+      temp.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;';
+      document.body.appendChild(temp);
+      temp.focus({ preventScroll: true });
+      temp.select();
+      temp.setSelectionRange(0, text.length);
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      temp.remove();
+      return ok;
+    }
+
+    function selectResultText() {
+      const range = document.createRange();
+      range.selectNodeContents(resultText);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+
+    copyBtn.addEventListener('click', async () => {
+      if (!currentResult) return;
+      revealToken++;
+      resultText.textContent = currentResult;
+      const ok = await copyText(currentResult);
+      if (ok) {
+        copyBtn.classList.add('is-done');
+        copyLabel.textContent = 'Copié';
+        setStatus(mode === 'encrypt' ? 'Message chiffré copié.' : 'Message déchiffré copié.', 'ok');
+        clearTimeout(copyTimer);
+        copyTimer = setTimeout(resetCopyButton, 2200);
+      } else {
+        selectResultText();
+        setStatus('Copie automatique bloquée. Le texte est sélectionné\u202F: utilisez Copier de votre téléphone.', 'err');
+      }
+    });
+
+    // ---------- Télécharger ----------
+    async function saveFile(filename, blob) {
+      const dl = await downloadsReady;
+      if (dl) {
+        try {
+          await dl.save({ filename, data: blob });
+          return 'saved';
+        } catch (e) {
+          return (e && e.code) || 'unavailable';
+        }
+      }
+      // Page ouverte hors du lecteur claude.ai : téléchargement classique.
+      try {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        return 'started';
+      } catch (e) {
+        return 'unavailable';
+      }
+    }
+
+    downloadBtn.addEventListener('click', async () => {
+      if (!output || downloadBtn.getAttribute('aria-busy') === 'true') return;
+      downloadBtn.setAttribute('aria-busy', 'true');
+      const result = await saveFile(output.filename, output.blob);
+      downloadBtn.removeAttribute('aria-busy');
+      const messages = {
+        saved: ['Fichier enregistré.', 'ok'],
+        started: ['Téléchargement lancé.', 'ok'],
+        declined: ['Téléchargement annulé.', 'info'],
+        rate_limited: ['Une fenêtre d’enregistrement est déjà ouverte. Terminez-la, puis réessayez.', 'err'],
+        too_large: ['Ce fichier est trop volumineux pour être enregistré ici. Essayez avec une image plus légère.', 'err'],
+        rejected_extension: ['Ce format de fichier ne peut pas être enregistré ici.', 'err'],
+        extension_not_enabled: ['Ce format de fichier ne peut pas être enregistré ici.', 'err']
+      };
+      const [text, type] = messages[result] || ['L’enregistrement de fichiers n’est pas disponible ici.', 'err'];
+      setStatus(text, type);
+    });
+
+    // ---------- Événements ----------
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      run();
+    });
+
+    messageBox.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        run();
+      }
+    });
+
+    // Le résultat affiché correspond toujours aux entrées actuelles.
+    function onEdit() {
+      if (!resultBox.hidden || !imageResult.hidden) hideResults();
+      if (statusBox.textContent) setStatus('');
+    }
+
+    messageBox.addEventListener('input', () => { onEdit(); updateHint(); });
+    passwordBox.addEventListener('input', () => { onEdit(); updateMeter(); });
+
+    modes.addEventListener('change', (e) => {
+      if (e.target.name === 'mode') setMode(e.target.value);
+    });
+
+    $('hintSwitch').addEventListener('click', () => {
+      setMode('decrypt');
+      passwordBox.focus();
+    });
+
+    fileHintSwitch.addEventListener('click', () => {
+      setMode(fileHintSwitch.dataset.to === 'encrypt' ? 'encrypt' : 'decrypt');
+      passwordBox.focus();
+    });
+
+    [tabText, tabImage].forEach((tab) => {
+      tab.addEventListener('click', () => setKind(tab === tabImage ? 'image' : 'text', { updateHash: true }));
+      tab.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+          e.preventDefault();
+          const next = tab === tabText ? tabImage : tabText;
+          setKind(next === tabImage ? 'image' : 'text', { updateHash: true });
+          next.focus();
+        }
+      });
+    });
+
+    window.addEventListener('hashchange', () => setKind(kindFromHash()));
+
+    fileInput.addEventListener('change', () => {
+      const f = fileInput.files && fileInput.files[0];
+      fileInput.value = '';
+      if (f) selectFile(f);
+    });
+
+    $('fileChange').addEventListener('click', () => fileInput.click());
+
+    ['dragenter', 'dragover'].forEach((type) => drop.addEventListener(type, (e) => {
+      e.preventDefault();
+      if (!busy) drop.classList.add('is-over');
+    }));
+    ['dragleave', 'dragend'].forEach((type) => drop.addEventListener(type, () => drop.classList.remove('is-over')));
+    drop.addEventListener('drop', (e) => {
+      e.preventDefault();
+      drop.classList.remove('is-over');
+      if (busy) return;
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) selectFile(f);
+    });
+
+    pwToggle.addEventListener('click', () => {
+      const show = passwordBox.type === 'password';
+      passwordBox.type = show ? 'text' : 'password';
+      pwToggle.textContent = show ? 'Masquer' : 'Afficher';
+      pwToggle.setAttribute('aria-pressed', show ? 'true' : 'false');
+    });
+
+    clearBtn.addEventListener('click', () => {
+      messageBox.value = '';
+      passwordBox.value = '';
+      passwordBox.type = 'password';
+      pwToggle.textContent = 'Afficher';
+      pwToggle.setAttribute('aria-pressed', 'false');
+      hideResults();
+      clearFile();
+      releaseUrls();
+      setStatus('');
+      updateMeter();
+      updateHint();
+      if (kind === 'text') messageBox.focus();
+    });
+
+    // ---------- Démarrage ----------
+    setKind(kindFromHash());
+    setMode('encrypt');
+    updateMeter();
+    if (!cryptoAvailable()) {
+      setStatus('Ce navigateur ne permet pas le chiffrement. Ouvrez la page dans Chrome, Firefox ou Safari à jour.', 'err');
+    }
+    // Le cadenas se ferme une fois à l’ouverture de la page.
+    setTimeout(() => setLocked(true), reduceMotion.matches ? 0 : 350);
+  </script>
+</body>
+</html>

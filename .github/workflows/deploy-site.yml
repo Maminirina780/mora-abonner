@@ -41,7 +41,7 @@ jobs:
           # racine demain — une note, une cle, une sauvegarde — ne se
           # retrouvera pas publie sans que personne l'ait decide.
           mkdir -p _site
-          for f in index.html formation.html app.js formation.js shared.js data.js style.css logo.svg; do
+          for f in index.html formation.html chiffrement.html app.js formation.js shared.js data.js style.css logo.svg; do
             [ -f "$f" ] || { echo "::error::$f manquant"; exit 1; }
             cp "$f" _site/
           done
